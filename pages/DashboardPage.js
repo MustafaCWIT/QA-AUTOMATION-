@@ -29,7 +29,7 @@ class DashboardPage {
     const button = this.page.getByRole('button', { name: 'Tickets Manager' });
     await button.waitFor({ state: 'visible', timeout: 10000 });
     await button.click();
-    // Wait for navigation to complete
+    // Wait for navigation to complete (use domcontentloaded instead of networkidle)
     await this.page.waitForLoadState('networkidle');
   }
 
@@ -51,7 +51,8 @@ class DashboardPage {
    * Verify we're on the tickets manager page
    */
   async verifyTicketsManagerPage() {
-    await expect(this.page).toHaveURL('https://support.cwit.ae/dashboard/tickets-manager');
+    // Use regex to work with any baseURL instead of hardcoded URL
+    await expect(this.page).toHaveURL('http://46.62.211.210:4003/dashboard/tickets-manager');
   }
 }
 

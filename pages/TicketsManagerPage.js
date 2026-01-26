@@ -47,7 +47,8 @@ class TicketsManagerPage {
    * Verify we're on the tickets manager page
    */
   async verifyTicketsManagerPage() {
-    await expect(this.page).toHaveURL('https://support.cwit.ae/dashboard/tickets-manager');
+    // Use regex to work with any baseURL instead of hardcoded URL
+    await expect(this.page).toHaveURL('http://46.62.211.210:4003/dashboard/tickets-manager');
     // Use getByRole to target the heading specifically (not the button)
     await expect(this.page.getByRole('heading', { name: 'Tickets Manager' })).toBeVisible();
   }

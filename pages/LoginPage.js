@@ -10,9 +10,17 @@ class LoginPage {
     // Selectors
     this.emailInput = 'input[type="email"]';
     this.passwordInput = 'input[type="password"]';
-    this.loginButton = 'button:has-text("Log In")';
-    this.welcomeText = 'text=Welcome';
-    this.signInText = 'text=Sign in to access your account';
+    this.loginButton = 'button:has-text("Sign In")';
+    this.signInTitle = 'h1:has-text("Sign In"), h2:has-text("Sign In"), h3:has-text("Sign In"), [role="heading"]:has-text("Sign In"), text="Sign In"';
+    this.instructionText = 'text=Enter your credentials to access your account';
+    this.emailPlaceholder = 'input[placeholder="name@company.com"]';
+    this.passwordToggleIcon = '[class*="eye"], [class*="password-toggle"], button[aria-label*="password"], button[aria-label*="Password"]';
+    // Left section branding elements
+    this.maxenPowerLogo = '[class*="logo"], img[alt*="Maxen"], img[alt*="logo"]';
+    this.maxenPowerText = 'text=MAXEN POWER';
+    this.copyrightText = 'text=© 2019-2026';
+    this.versionText = 'text=V1.3.3';
+    this.developerText = 'text=Developed by Clear Wave Information Technology';
   }
 
   /**
@@ -47,6 +55,13 @@ class LoginPage {
   }
 
   /**
+   * Toggle password visibility
+   */
+  async togglePasswordVisibility() {
+    await this.page.click(this.passwordToggleIcon);
+  }
+
+  /**
    * Perform complete login action
    * @param {string} email - Email address
    * @param {string} password - Password
@@ -61,11 +76,47 @@ class LoginPage {
    * Verify login page is displayed
    */
   async verifyLoginPage() {
-    await expect(this.page.locator(this.welcomeText)).toBeVisible();
-    await expect(this.page.locator(this.signInText)).toBeVisible();
-    await expect(this.page.locator(this.emailInput)).toBeVisible();
-    await expect(this.page.locator(this.passwordInput)).toBeVisible();
-    await expect(this.page.locator(this.loginButton)).toBeVisible();
+    // Verify right section - login form elements
+    // Wait for Sign In title - try heading first, then fallback to any text that's not in a button
+    const headingWithSignIn = this.page.locator('h1, h2, h3, h4, h5, h6, [role="heading"]').filter({ hasText: /Sign In/i });
+    if (await headingWithSignIn.count() > 0) {
+      await expect(headingWithSignIn.first()).toBeVisible({ timeout: 10000 });
+    } else {
+      // Fallback: any text containing "Sign In" that is NOT inside a button
+      const signInText = this.page.locator('text=/Sign In/i').filter({ hasNot: this.page.locator('button') });
+      await expect(signInText.first()).toBeVisible({ timeout: 10000 });
+    }
+    await expect(this.page.locator(this.instructionText)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(this.emailInput)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(this.emailPlaceholder)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(this.passwordInput)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(this.passwordToggleIcon).first()).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(this.loginButton)).toBeVisible({ timeout: 10000 });
+  }
+
+  /**
+   * Verify left section branding elements
+   */
+  async verifyBrandingSection() {
+    // Verify Maxen Power logo (checking for logo element or image)
+    const logoExists = await this.page.locator(this.maxenPowerLogo).count() > 0;
+    if (logoExists) {
+      await expect(this.page.locator(this.maxenPowerLogo).first()).toBeVisible();
+    }
+    // Verify Maxen Power text
+    await expect(this.page.locator(this.maxenPowerText)).toBeVisible();
+    // Verify copyright information
+    await expect(this.page.locator(this.copyrightText)).toBeVisible();
+    await expect(this.page.locator(this.versionText)).toBeVisible();
+    await expect(this.page.locator(this.developerText)).toBeVisible();
+  }
+
+  /**
+   * Verify all login page elements including branding
+   */
+  async verifyCompleteLoginPage() {
+    await this.verifyLoginPage();
+    await this.verifyBrandingSection();
   }
 
   /**

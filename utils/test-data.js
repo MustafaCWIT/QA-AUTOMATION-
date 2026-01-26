@@ -8,8 +8,8 @@ module.exports = {
   // Test credentials - Update with your test account details
   credentials: {
     valid: {
-      email: process.env.TEST_EMAIL || 'your-test-email@example.com',
-      password: process.env.TEST_PASSWORD || 'your-test-password',
+      email: process.env.TEST_EMAIL || 'saima@maxenpower.com',
+      password: process.env.TEST_PASSWORD || 'Maxen12345@',
     },
     invalid: {
       email: 'invalid@example.com',
@@ -23,7 +23,7 @@ module.exports = {
 
   // URLs
   urls: {
-    baseUrl: 'https://support.cwit.ae',
+    baseUrl: 'http://46.62.211.210:4003',
     loginPage: '/auth/login',
     dashboard: '/dashboard/welcome',
     ticketsManager: '/dashboard/tickets-manager',
