@@ -81,10 +81,13 @@ test.describe('Login Page Tests', () => {
     // Step 5: Wait for navigation to tickets manager page
     await dashboardPage.waitForTicketsManagerPage();
     
-    // Step 6: Verify we're on tickets manager page
+    // Step 6: Verify we're on tickets manager page (still logged in - no login again)
     await expect(page).toHaveURL('https://support.cwit.ae/dashboard/tickets-manager');
+    // Verify we're still logged in (not redirected to login page)
+    await expect(page).not.toHaveURL(/.*auth\/login/);
     
     // Step 7: Click + Ticket button in top right corner to open ticket creation form
+    // (No login needed - using same session from Step 1)
     const ticketsManagerPage = new TicketsManagerPage(page);
     await ticketsManagerPage.verifyTicketsManagerPage();
     await ticketsManagerPage.clickAddTicket();

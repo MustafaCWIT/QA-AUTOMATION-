@@ -24,9 +24,10 @@ class DashboardPage {
    * Click the Tickets Manager button/link
    */
   async clickTicketsManager() {
-    // Wait for the button to be visible first
-    const button = this.page.locator(this.ticketsManagerButton).first();
-    await button.waitFor({ state: 'visible', timeout: 5000 });
+    // Use getByRole to target the button specifically (not the heading)
+    // The button is in the sidebar navigation
+    const button = this.page.getByRole('button', { name: 'Tickets Manager' });
+    await button.waitFor({ state: 'visible', timeout: 10000 });
     await button.click();
     // Wait for navigation to complete
     await this.page.waitForLoadState('networkidle');
