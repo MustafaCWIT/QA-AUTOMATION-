@@ -18,12 +18,12 @@ test.describe('Login Page Tests', () => {
   test('should show email and password fields', async ({ page }) => {
     await expect(page.locator('input[type="email"]')).toBeVisible();
     await expect(page.locator('input[type="password"]')).toBeVisible();
-    await expect(page.locator('button:has-text("Log In")')).toBeVisible();
+    await expect(page.locator('button:has-text("Sign In")')).toBeVisible();
   });
 
   test('should allow entering email and password', async ({ page }) => {
-    const testEmail = 'sajjal.nawaz@cwit.ae';
-    const testPassword = '  S@jjal123';
+    const testEmail = 'saima@maxenpower.com';
+    const testPassword = 'Maxen12345@';
 
     await loginPage.enterEmail(testEmail);
     await loginPage.enterPassword(testPassword);
@@ -62,8 +62,8 @@ test.describe('Login Page Tests', () => {
   });
 
   test('should successfully login and navigate to tickets manager', async ({ page }) => {
-    const testEmail = 'sajjal.nawaz@cwit.ae';
-    const testPassword = 'S@jjal123';
+    const testEmail = 'saima@maxenpower.com';
+    const testPassword = 'Maxen12345@';
 
     // Step 1: Login once
     await loginPage.login(testEmail, testPassword);
@@ -72,7 +72,7 @@ test.describe('Login Page Tests', () => {
     await loginPage.waitForLoginSuccess('/dashboard/welcome');
     
     // Step 3: Verify we're on welcome page
-    await expect(page).toHaveURL('https://support.cwit.ae/dashboard/welcome');
+    await expect(page).toHaveURL('http://46.62.211.210:4003/dashboard/welcome');
     
     // Step 4: Click Tickets Manager button from welcome screen (no login again)
     const dashboardPage = new DashboardPage(page);
@@ -81,10 +81,13 @@ test.describe('Login Page Tests', () => {
     // Step 5: Wait for navigation to tickets manager page
     await dashboardPage.waitForTicketsManagerPage();
     
-    // Step 6: Verify we're on tickets manager page
-    await expect(page).toHaveURL('https://support.cwit.ae/dashboard/tickets-manager');
+    // Step 6: Verify we're on tickets manager page (still logged in - no login again)
+    await expect(page).toHaveURL('http://46.62.211.210:4003/dashboard/tickets-manager');
+    // Verify we're still logged in (not redirected to login page)
+    await expect(page).not.toHaveURL(/.*auth\/login/);
     
     // Step 7: Click + Ticket button in top right corner to open ticket creation form
+    // (No login needed - using same session from Step 1)
     const ticketsManagerPage = new TicketsManagerPage(page);
     await ticketsManagerPage.verifyTicketsManagerPage();
     await ticketsManagerPage.clickAddTicket();

@@ -1,0 +1,55 @@
+{
+  "cookies": [
+    {
+      "name": "testcookie",
+      "value": "1",
+      "domain": "46.62.211.210",
+      "path": "/auth",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "next-auth.csrf-token-manager-default",
+      "value": "7177fb28af3120396f9a3bed123438707b70e22c95cfa6c8bf1a808f74739fab%7C6a1822939f87bb1271351e19368041711c98ab6cca320d6a0d724aa2e24ce704",
+      "domain": "46.62.211.210",
+      "path": "/",
+      "expires": 1772210247.581272,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "next-auth.callback-url-manager-default",
+      "value": "http%3A%2F%2F46.62.211.210%3A4003%2Fauth%2Flogin",
+      "domain": "46.62.211.210",
+      "path": "/",
+      "expires": 1772210249.454351,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "next-auth.session-token-manager-default",
+      "value": "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..o2YgljdmmVCfAcvv.Wx_-BSvUPPFtJeKdq_CtiWa8Yj-xHaW8lKueOA_l5t_HbARyZB44B88NlrCAyBec8Z5chj6OF5Nb7VEtF_PDL9K2qyNsW3hXj4Gbw8X7ZLzg8Y16Y0gEh7Sjddr9ZEMFR4te-8T0HUqnD9nO17NmHs8_28w6v4q5MMu1TfZjYZBpR-ycu07ZQuU5naq-rTFmX1NzV8FGFhyDYlEHiA6KtQtI0r0IKffCJSfO97HzjejRez1tEOm4YM7I92fiMCP-HgmtSNaxGSQKOvRqDfsuR7GMm07JQShqCmaTMwoo_n54Vw6AMe1ybwvqNkoSO5MQj-2tWnTJCGfSvDc8ImvrlkbreNQpEDz3ujRSYMd0_zn1SBfRYli9rIQXzvw0AxBsajSB0rjzRotXMjPElpcWkskFg5R5iUKHCkxKDj0_MEtVVrD_ua1TCBWd9-lMCpsYJg_TKu9ZHm1Hnzwmob01iWayozrn9aIV5-HfiIOJ9RxWzaxVR9DM0DldJq6PbcNRThiiE-nmZD-0LqAI2Ey6QDLrH83Ec764WveYeZ2RdHb6FxLMVdCkflWSWOhGfUJpAxkf8uDvxyDajOJewmD7GeDAzqVLbqi2cD6omk6jKEeJPWZ8Jdlc1VbDCYzyfkzGVCixYt8NYrENVnJptOR-ULUmanFBkJX6KeCkQlE3h4tN1OtKRbr9p9awz4CZRHMNRcso9wQoJI38qUUcMM6M_a85MpfXMEDlagDTIPSzqmlRBwL7zE9y2L1HDKqpTccn7rx_HF6bW6-TQj5Lwwy5_3wSAJiHeYN4m3herkVwg_eRBhqNnif8GE492CxlJ3lNvi4MbMwjh7Ypi_ahqvJJ-9cpoXV0LmwlmMgRSggW6A-Bylu_FjzqgLbrnzZ96WbHoNNnYxCx-FvH5u9toaNEuJ3WOcue8ZfQxkKzJwAZFN-6FQS_hWqO2IIMmHuLbcKqDl8PXPORHHeRZYDsbFm-hdcWCMzHEMGdBJWfvv5aq4TU6M3fekH3FZV4UAZ5cuHQptFcD91sLv_5D-XVBjuIwKI_zUnpfqOFa2KD-w4J-KhZob10NmgPDUj1NQDAgup8oVFV1xWo7vArHFfI4jDBOT6_ixf3bVZPombsUNXIVVq5b6u0iAQcpW3PICmJ1Ai2qOFPxxsoWW6MY23LmIDeOTSSj5VBfCw7A2QFWDRziloEAliq3m3i0xZAoAIi07bgha5C9fDsQV89An9OdYGxxH81dZiv1tZU_kisk7sKbGh4Topp0ABk1K0KgOiVImuqqu56pxBefXQRDJ6IGG4M8bhyPYTbKygaO-lRUBLoaPS2UZ4xsVL-K4TBR_K4xoCkDgyx52ci2pJn20y2XJ6CDzWNBAxk54x1CHzN5nZJLMAra5pCFb3vpeQ3EKr9NgVm9rLFXwuVBahQPDJWRYdUyCbjS43t5jwQAlhb7ZSm9QxrEgdub6JOhMArWC07mIA5XxyAgOcPe6ryHBBaZSjlzumpNw4FmCr_1stY-MSdl27A6Q0hUPfmfGQvsBIvfOit0mHQQyEhgQpU1Y48tg.WHVpSf1IvTxlT8DHZhHZMQ",
+      "domain": "46.62.211.210",
+      "path": "/",
+      "expires": 1772210249.805306,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://46.62.211.210:4003",
+      "localStorage": [
+        {
+          "name": "nextauth.message",
+          "value": "{\"event\":\"session\",\"data\":{\"trigger\":\"getSession\"},\"timestamp\":1769618249}"
+        }
+      ]
+    }
+  ]
+}

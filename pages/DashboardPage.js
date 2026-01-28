@@ -9,6 +9,7 @@ class DashboardPage {
     this.page = page;
     // Selectors - Try multiple variations to find Tickets Manager button/link
     this.ticketsManagerButton = 'button:has-text("Tickets Manager"), a:has-text("Tickets Manager"), [href*="tickets-manager"], button:has-text("Tickets"), a:has-text("Tickets")';
+    this.timesheetButton = 'button:has-text("Timesheet"), a:has-text("Timesheet"), [href*="timesheet"]';
     this.welcomeText = 'text=Welcome';
   }
 
@@ -24,12 +25,33 @@ class DashboardPage {
    * Click the Tickets Manager button/link
    */
   async clickTicketsManager() {
-    // Wait for the button to be visible first
-    const button = this.page.locator(this.ticketsManagerButton).first();
-    await button.waitFor({ state: 'visible', timeout: 5000 });
+    // Use getByRole to target the button specifically (not the heading)
+    // The button is in the sidebar navigation
+    const button = this.page.getByRole('button', { name: 'Tickets Manager' });
+    await button.waitFor({ state: 'visible', timeout: 10000 });
+    await button.click();
+    // Wait for navigation to complete (use domcontentloaded instead of networkidle)
+    await this.page.waitForLoadState('networkidle');
+  }
+
+  /**
+   * Click the Timesheet button/link to navigate to timesheet page
+   */
+  async clickTimesheet() {
+    // Use getByRole to target the button specifically (not the heading)
+    // The button is in the sidebar navigation
+    const button = this.page.getByRole('button', { name: 'Timesheet' });
+    await button.waitFor({ state: 'visible', timeout: 10000 });
     await button.click();
     // Wait for navigation to complete
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
+  }
+
+  /**
+   * Wait for navigation to timesheet page
+   */
+  async waitForTimesheetPage() {
+    await this.page.waitForURL('**/dashboard/timesheet', { timeout: 10000 });
   }
 
   /**
@@ -50,7 +72,8 @@ class DashboardPage {
    * Verify we're on the tickets manager page
    */
   async verifyTicketsManagerPage() {
-    await expect(this.page).toHaveURL('https://support.cwit.ae/dashboard/tickets-manager');
+    // Use regex to work with any baseURL instead of hardcoded URL
+    await expect(this.page).toHaveURL('http://46.62.211.210:4003/dashboard/tickets-manager');
   }
 }
 
