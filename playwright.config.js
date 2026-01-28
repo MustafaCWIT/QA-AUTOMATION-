@@ -13,13 +13,13 @@ const { defineConfig, devices } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: './tests',
   /* Run tests in files in parallel */
-  fullyParallel: true,
+  fullyParallel: false, // Disabled - run tests sequentially to avoid server overload
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry failed tests */
-  retries: process.env.CI ? 2 : 0,
-  /* Reduce workers for slow server - run tests sequentially to avoid overwhelming server */
-  workers: process.env.CI ? 1 : undefined,
+  retries: process.env.CI ? 2 : 1, // Enable retries locally too (1 retry) for flaky tests
+  /* Run tests sequentially (one at a time) to avoid overwhelming remote server */
+  workers: 1, // Sequential execution - one test at a time
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -40,9 +40,19 @@ module.exports = defineConfig({
 
   /* Configure projects for major browsers */
   projects: [
+    // Setup project - runs once to authenticate and save session
+    {
+      name: 'setup',
+      testMatch: /.*\.setup\.js/,
+    },
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { 
+        ...devices['Desktop Chrome'],
+        // Use saved authentication state from setup
+        storageState: '.auth/user.json',
+      },
+      dependencies: ['setup'],
     },
 
     // Temporarily disabled - Firefox/WebKit installation issues

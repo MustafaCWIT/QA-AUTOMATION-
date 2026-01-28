@@ -7,11 +7,15 @@ const { expect } = require('@playwright/test');
 class LoginPage {
   constructor(page) {
     this.page = page;
-    // Selectors
-    this.emailInput = 'input[type="email"]';
-    this.passwordInput = 'input[type="password"]';
-    this.loginButton = 'button:has-text("Sign In")';
-    this.signInTitle = 'h1:has-text("Sign In"), h2:has-text("Sign In"), h3:has-text("Sign In"), [role="heading"]:has-text("Sign In"), text="Sign In"';
+    // Selectors - Updated for current login page structure
+    // Email field: id="email", type="email"
+    this.emailInput = 'input#email, input[type="email"]';
+    // Password field: id="password", type="password"
+    this.passwordInput = 'input#password, input[type="password"]';
+    // Login button: data-id="Log In" (most reliable), fallback to text
+    this.loginButton = 'button[data-id="Log In"], button:has-text("Log In"), button:has-text("Login"), button[type="submit"]';
+    // Page title/heading (may be "Sign In" or "Login")
+    this.signInTitle = 'h1:has-text("Sign In"), h1:has-text("Login"), h2:has-text("Sign In"), h2:has-text("Login"), h3:has-text("Sign In"), h3:has-text("Login"), [role="heading"]:has-text("Sign In"), [role="heading"]:has-text("Login")';
     this.instructionText = 'text=Enter your credentials to access your account';
     this.emailPlaceholder = 'input[placeholder="name@company.com"]';
     this.passwordToggleIcon = '[class*="eye"], [class*="password-toggle"], button[aria-label*="password"], button[aria-label*="Password"]';
@@ -28,6 +32,8 @@ class LoginPage {
    */
   async goto() {
     await this.page.goto('/auth/login');
+    // Wait for login form to be visible (email input)
+    await this.page.waitForSelector('input#email, input[type="email"]', { timeout: 10000 });
     await this.page.waitForLoadState('networkidle');
   }
 
@@ -36,7 +42,9 @@ class LoginPage {
    * @param {string} email - Email address to enter
    */
   async enterEmail(email) {
-    await this.page.fill(this.emailInput, email);
+    const emailField = this.page.locator(this.emailInput).first();
+    await emailField.waitFor({ state: 'visible', timeout: 10000 });
+    await emailField.fill(email);
   }
 
   /**
@@ -44,14 +52,20 @@ class LoginPage {
    * @param {string} password - Password to enter
    */
   async enterPassword(password) {
-    await this.page.fill(this.passwordInput, password);
+    const passwordField = this.page.locator(this.passwordInput).first();
+    await passwordField.waitFor({ state: 'visible', timeout: 10000 });
+    await passwordField.fill(password);
   }
 
   /**
    * Click the login button
+   * Updated to use data-id="Log In" selector
    */
   async clickLogin() {
-    await this.page.click(this.loginButton);
+    const loginBtn = this.page.locator(this.loginButton).first();
+    await loginBtn.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(loginBtn).toBeEnabled({ timeout: 5000 });
+    await loginBtn.click();
   }
 
   /**
