@@ -1611,8 +1611,19 @@ async function unselectDropdownOption(page, comboboxId) {
     await page.waitForTimeout(500);
   }
 
-  // Close dropdown if still open
-  await page.keyboard.press('Escape');
+  // Close dropdown if still open - FIXED: Don't use Escape key as it closes the entire modal!
+  // Instead, click on the modal dialog body (somewhere neutral) to dismiss the dropdown
+  const modalBody = page.locator('[role="dialog"]').first();
+  if (await modalBody.isVisible({ timeout: 1000 }).catch(() => false)) {
+    // Click on the modal title/header area to close dropdown without closing modal
+    const modalTitle = page.locator('[role="dialog"] h2, [role="dialog"] [data-slot="header"], [role="dialog"] .dialog-header').first();
+    if (await modalTitle.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await modalTitle.click();
+    } else {
+      // Fallback: Click on the modal body itself (but not on any buttons)
+      await modalBody.click({ position: { x: 10, y: 10 } });
+    }
+  }
   await page.waitForTimeout(500);
 }
 
