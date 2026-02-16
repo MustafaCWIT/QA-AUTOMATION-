@@ -31,10 +31,21 @@ class LoginPage {
    * Navigate to the login page
    */
   async goto() {
-    await this.page.goto('/auth/login');
-    // Wait for login form to be visible (email input)
-    await this.page.waitForSelector('input#email, input[type="email"]', { timeout: 10000 });
-    await this.page.waitForLoadState('networkidle');
+    await this.page.goto('/auth/login', { waitUntil: 'domcontentloaded' });
+    
+    // Wait a bit for any redirects to complete
+    await this.page.waitForTimeout(1000);
+    
+    // Check if we're still on login page (not redirected)
+    const currentUrl = this.page.url();
+    if (currentUrl.includes('/auth/login')) {
+      // We're on login page, wait for login form to be visible
+      await this.page.waitForSelector('input#email, input[type="email"]', { timeout: 10000 });
+      await this.page.waitForLoadState('networkidle');
+    } else {
+      // We were redirected (probably already logged in), that's okay
+      // The caller can handle this case
+    }
   }
 
   /**
@@ -42,8 +53,25 @@ class LoginPage {
    * @param {string} email - Email address to enter
    */
   async enterEmail(email) {
+    // Ensure we're on the login page
+    const currentUrl = this.page.url();
+    if (!currentUrl.includes('/auth/login')) {
+      // If not on login page, navigate there first
+      await this.goto();
+    }
+    
+    // Wait for page to be ready
+    await this.page.waitForLoadState('domcontentloaded');
+    
+    // Wait for email field to be visible
     const emailField = this.page.locator(this.emailInput).first();
-    await emailField.waitFor({ state: 'visible', timeout: 10000 });
+    await emailField.waitFor({ state: 'visible', timeout: 15000 });
+    
+    // Ensure field is enabled before filling
+    await expect(emailField).toBeEnabled({ timeout: 5000 });
+    
+    // Clear any existing value and fill
+    await emailField.clear();
     await emailField.fill(email);
   }
 
@@ -52,8 +80,15 @@ class LoginPage {
    * @param {string} password - Password to enter
    */
   async enterPassword(password) {
+    // Wait for password field to be visible
     const passwordField = this.page.locator(this.passwordInput).first();
-    await passwordField.waitFor({ state: 'visible', timeout: 10000 });
+    await passwordField.waitFor({ state: 'visible', timeout: 15000 });
+    
+    // Ensure field is enabled before filling
+    await expect(passwordField).toBeEnabled({ timeout: 5000 });
+    
+    // Clear any existing value and fill
+    await passwordField.clear();
     await passwordField.fill(password);
   }
 

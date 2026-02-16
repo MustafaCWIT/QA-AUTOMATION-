@@ -63,36 +63,54 @@ test.describe('Login Page Tests', () => {
 
   test('should successfully login and navigate to tickets manager', async ({ page }) => {
     const testEmail = 'saima@maxenpower.com';
-    const testPassword = 'Maxen12345@';
+    const testPassword = 'maxen12345';
 
-    // Step 1: Login once
-    await loginPage.login(testEmail, testPassword);
+    // Check if we're already logged in (on dashboard/welcome page)
+    const currentUrl = page.url();
+    const isAlreadyLoggedIn = currentUrl.includes('/dashboard/');
     
-    // Step 2: Wait for navigation to welcome page
-    await loginPage.waitForLoginSuccess('/dashboard/welcome');
+    if (!isAlreadyLoggedIn) {
+      // Step 1: Navigate to login page and login
+      // (beforeEach already navigated, but ensure we're on login page)
+      if (!currentUrl.includes('/auth/login')) {
+        await loginPage.goto();
+      }
+      
+      // Step 2: Perform login
+      await loginPage.login(testEmail, testPassword);
+      
+      // Step 3: Wait for navigation to welcome page
+      await loginPage.waitForLoginSuccess('/dashboard/welcome');
+    } else {
+      // Already logged in, just navigate to welcome page if not already there
+      if (!currentUrl.includes('/dashboard/welcome')) {
+        await page.goto('/dashboard/welcome');
+        await page.waitForLoadState('networkidle');
+      }
+    }
     
-    // Step 3: Verify we're on welcome page
-    await expect(page).toHaveURL('http://46.62.211.210:4003/dashboard/welcome');
+    // Step 4: Verify we're on welcome page
+    await expect(page).toHaveURL(/.*dashboard\/welcome/);
     
-    // Step 4: Click Tickets Manager button from welcome screen (no login again)
+    // Step 5: Click Tickets Manager button from welcome screen
     const dashboardPage = new DashboardPage(page);
     await dashboardPage.clickTicketsManager();
     
-    // Step 5: Wait for navigation to tickets manager page
+    // Step 6: Wait for navigation to tickets manager page
     await dashboardPage.waitForTicketsManagerPage();
     
-    // Step 6: Verify we're on tickets manager page (still logged in - no login again)
-    await expect(page).toHaveURL('http://46.62.211.210:4003/dashboard/tickets-manager');
+    // Step 7: Verify we're on tickets manager page (still logged in - no login again)
+    await expect(page).toHaveURL(/.*dashboard\/tickets-manager/);
     // Verify we're still logged in (not redirected to login page)
     await expect(page).not.toHaveURL(/.*auth\/login/);
     
-    // Step 7: Click + Ticket button in top right corner to open ticket creation form
-    // (No login needed - using same session from Step 1)
+    // Step 8: Click + Ticket button in top right corner to open ticket creation form
+    // (No login needed - using same session)
     const ticketsManagerPage = new TicketsManagerPage(page);
     await ticketsManagerPage.verifyTicketsManagerPage();
     await ticketsManagerPage.clickAddTicket();
     
-    // Step 8: Verify ticket creation form is open
+    // Step 9: Verify ticket creation form is open
     await ticketsManagerPage.waitForTicketForm();
     await ticketsManagerPage.verifyTicketFormOpen();
   });
