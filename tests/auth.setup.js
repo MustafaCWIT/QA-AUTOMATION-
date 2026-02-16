@@ -55,6 +55,8 @@ setup('authenticate', async ({ page }) => {
   // Step 9: Save authentication state to file
   await page.context().storageState({ path: authFile });
   
-  console.log('✅ Authentication successful - session saved to', authFile);
+  console.log(`✅ [SETUP] Authentication successful for ${testData.credentials.valid.email} - session saved to ${authFile}`);
+  console.log(`📝 [SETUP] Note: This saved session will be used by tests that don't explicitly create fresh contexts.`);
+  console.log(`📝 [SETUP] Tests using { browser } fixture with storageState: undefined will create fresh sessions.\n`);
 });
 
