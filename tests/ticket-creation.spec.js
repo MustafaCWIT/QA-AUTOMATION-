@@ -187,6 +187,15 @@ test.describe('Ticket Creation', () => {
     // Verify ticket creation form is open
     await ticketsManagerPage.verifyTicketFormOpen();
     
+    // Click the "Create" button to view the ticket creation form
+    // This button has data-id="Create" and contains the text "Create"
+    const createButton = page.locator('button[data-id="Create"]').first();
+    await expect(createButton).toBeVisible({ timeout: 10000 });
+    await createButton.click();
+    
+    // Wait for the form to fully load after clicking Create
+    await page.waitForTimeout(1000);
+    
     // Verify the form is visible by checking for Subject input
     const subjectInput = page.locator('input[placeholder*="Subject" i], input[placeholder*="Enter Subject"]').first();
     await expect(subjectInput).toBeVisible({ timeout: 15000 });
