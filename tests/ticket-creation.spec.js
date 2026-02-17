@@ -133,48 +133,147 @@ async function selectComboboxOption(
     }
     
     // Look for the search input in the popover (CommandInput)
-    // For Purpose dropdown, the placeholder is "Search purposes..."
-    // For Assign To dropdown, the placeholder is "Q Type to search..."
+    // Different dropdowns have different placeholders:
+    // - Purpose: "Search purposes..."
+    // - Assign To: "Q Type to search..."
+    // - Priority: "Search..." or "Type to search..."
+    // - Status, Source: Similar patterns
     const searchInputSelectors = [
+      // Label-specific placeholders
       `input[placeholder*="Search ${label.toLowerCase()}" i]`,
+      `input[placeholder*="search ${label.toLowerCase()}" i]`,
+      // Common patterns
       `input[placeholder*="Search purposes" i]`,
       `input[placeholder*="Type to search" i]`,
       `input[placeholder*="type to search" i]`,
+      `input[placeholder*="Q Type to search" i]`,
+      `input[placeholder*="q type to search" i]`,
+      // Generic search patterns
       'input[placeholder*="Search" i]',
       'input[placeholder*="search" i]',
-      'input[type="text"]',
-      'input[type="search"]'
+      // Any input in the popover/dialog
+      '[role="dialog"] input[type="text"]',
+      '[role="dialog"] input[type="search"]',
+      '[role="listbox"] input[type="text"]',
+      '[role="listbox"] input[type="search"]',
+      // Fallback: any text input in visible popover
+      'input[type="text"]:visible',
+      'input[type="search"]:visible'
     ];
     
     let searchInput = null;
+    let searchInputFound = false;
+    
+    // Try to find search input with multiple strategies
     for (const selector of searchInputSelectors) {
-      searchInput = page.locator(selector).first();
-      if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-        console.log(`Found search input with selector: ${selector}`);
-        break;
+      try {
+        const inputs = page.locator(selector);
+        const count = await inputs.count();
+        
+        // Check all matching inputs to find the one in the popover
+        for (let i = 0; i < count; i++) {
+          const input = inputs.nth(i);
+          if (await input.isVisible({ timeout: 1000 }).catch(() => false)) {
+            // Verify it's actually in a popover/dialog (not in the main form)
+            const isInPopover = await input.evaluate((el) => {
+              let parent = el.parentElement;
+              let depth = 0;
+              while (parent && depth < 10) {
+                const role = parent.getAttribute('role');
+                const classes = parent.className || '';
+                if (role === 'dialog' || role === 'listbox' || 
+                    classes.includes('popover') || classes.includes('dropdown') ||
+                    parent.hasAttribute('data-radix-popper-content-wrapper')) {
+                  return true;
+                }
+                parent = parent.parentElement;
+                depth++;
+              }
+              return false;
+            }).catch(() => false);
+            
+            if (isInPopover) {
+              searchInput = input;
+              searchInputFound = true;
+              console.log(`Found search input with selector: ${selector} (input ${i + 1})`);
+              break;
+            }
+          }
+        }
+        
+        if (searchInputFound) break;
+      } catch (e) {
+        // Continue to next selector
+        continue;
       }
-      searchInput = null;
+    }
+    
+    // If still not found, try a more aggressive approach - find any visible input in popover
+    if (!searchInputFound) {
+      console.log('Trying more aggressive search input detection...');
+      const allInputs = page.locator('input[type="text"], input[type="search"]');
+      const inputCount = await allInputs.count();
+      
+      for (let i = 0; i < inputCount; i++) {
+        const input = allInputs.nth(i);
+        if (await input.isVisible({ timeout: 1000 }).catch(() => false)) {
+          // Check if it's in a popover
+          const isInPopover = await input.evaluate((el) => {
+            let parent = el.parentElement;
+            let depth = 0;
+            while (parent && depth < 10) {
+              const role = parent.getAttribute('role');
+              const classes = parent.className || '';
+              if (role === 'dialog' || role === 'listbox' || 
+                  classes.includes('popover') || classes.includes('dropdown') ||
+                  parent.hasAttribute('data-radix-popper-content-wrapper')) {
+                return true;
+              }
+              parent = parent.parentElement;
+              depth++;
+            }
+            return false;
+          }).catch(() => false);
+          
+          if (isInPopover) {
+            searchInput = input;
+            searchInputFound = true;
+            console.log(`Found search input (input ${i + 1} in page)`);
+            break;
+          }
+        }
+      }
     }
     
     // If search input is found, use it to filter options
-    if (searchInput && await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-      console.log('Search input found, clearing and typing option text');
+    if (searchInput && searchInputFound && await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      console.log(`Search input found for "${label}", clearing and typing option text`);
       // Click to focus the search input
       await searchInput.click();
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
       
       // Clear any existing text (select all and delete)
       await searchInput.press('Control+a');
       await searchInput.press('Delete');
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
       
       // Type the option text to filter
       await searchInput.fill(optionText);
-      await page.waitForTimeout(1000); // Wait for debounce and filtering to complete
+      await page.waitForTimeout(1200); // Wait for debounce and filtering to complete
       
-      console.log(`Typed "${optionText}" in search input, waiting for filtered options...`);
+      // Verify text was typed
+      const typedValue = await searchInput.inputValue().catch(() => '');
+      console.log(`Typed "${optionText}" in search input (actual value: "${typedValue}"), waiting for filtered options...`);
+      
+      if (!typedValue || !typedValue.includes(optionText.split(' ')[0])) {
+        // Retry typing if it didn't work
+        console.log('Retrying to type in search input...');
+        await searchInput.click();
+        await searchInput.fill(optionText);
+        await page.waitForTimeout(1000);
+      }
     } else {
-      console.log('No search input found, proceeding to find options directly');
+      console.log(`⚠️ No search input found for "${label}", proceeding to find options directly`);
     }
     
     // Find and click the option in the command list
@@ -570,7 +669,7 @@ test.describe('Ticket Creation', () => {
       source: 'Email', // Change to match your actual source options
       status: 'Assigned', // Change to match your actual status options
       priority: 'Medium', // Change to match your actual priority options (Low, Medium, High, etc.)
-      slaType: 'Standard', // Change to match your actual SLA options
+      slaType: 'Higher', // Change to match your actual SLA options
       contactName: 'Test Contact',
       contactPhone: '1234567890',
       contactEmail: 'test@example.com',
