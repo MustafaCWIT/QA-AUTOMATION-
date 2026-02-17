@@ -29,12 +29,104 @@ class LoginPage {
 
   /**
    * Navigate to the login page
+   * FIXED: Added retry logic for parallel execution - handles server overload gracefully
+   * @param {number} maxRetries - Maximum number of retry attempts (default: 3)
    */
-  async goto() {
-    await this.page.goto('/auth/login');
-    // Wait for login form to be visible (email input)
-    await this.page.waitForSelector('input#email, input[type="email"]', { timeout: 10000 });
-    await this.page.waitForLoadState('networkidle');
+  async goto(maxRetries = 3) {
+    let lastError;
+    
+    // Retry logic for handling server overload during parallel execution
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Add small delay between retries to avoid overwhelming server
+        if (attempt > 0) {
+          const delay = attempt * 2000; // 2s, 4s, 6s delays
+          await this.page.waitForTimeout(delay);
+        }
+        
+        // Navigate with longer timeout for remote server
+        await this.page.goto('/auth/login', { 
+          waitUntil: 'domcontentloaded',
+          timeout: 60000  // Increased timeout for parallel execution
+        });
+        
+        // Wait a bit for any redirects to complete
+        await this.page.waitForTimeout(1000);
+        
+        // Check if we're still on login page (not redirected)
+        const currentUrl = this.page.url();
+        if (currentUrl.includes('/auth/login')) {
+          // Check for "Service not available" error - if present, this is a retryable error
+          const serviceError = await this.page.locator('text=/Service not available|connectivity issues/i').isVisible().catch(() => false);
+          if (serviceError) {
+            // Service error detected - throw error to trigger retry
+            throw new Error('Service not available - server connectivity issue detected');
+          }
+          
+          // Wait for login form to be visible and functional with longer timeout
+          // Check if email input is actually visible and enabled (not just present in DOM)
+          const emailInput = this.page.locator('input#email, input[type="email"]').first();
+          await emailInput.waitFor({ state: 'visible', timeout: 30000 });
+          
+          // Verify the input is actually enabled (not disabled by error state)
+          const isEnabled = await emailInput.isEnabled().catch(() => false);
+          if (!isEnabled) {
+            throw new Error('Email input field is not enabled - page may be in error state');
+          }
+          
+          // Wait for network (with timeout - don't wait forever)
+          await Promise.race([
+            this.page.waitForLoadState('networkidle'),
+            new Promise(resolve => setTimeout(resolve, 15000)) // Max 15s
+          ]).catch(() => {});
+          
+          // Double-check that error message is gone before proceeding
+          const stillHasError = await this.page.locator('text=/Service not available|connectivity issues/i').isVisible().catch(() => false);
+          if (stillHasError) {
+            throw new Error('Service error still present after waiting - retrying...');
+          }
+          
+          // Success - return early
+          return;
+        } else {
+          // We were redirected (probably already logged in), that's okay
+          // The caller can handle this case
+          return;
+        }
+      } catch (error) {
+        lastError = error;
+        
+        // Check if this is a connection error (ERR_CONNECTION_REFUSED, ERR_NETWORK_CHANGED, etc.)
+        const isConnectionError = error.message.includes('ERR_CONNECTION_REFUSED') || 
+                                  error.message.includes('ERR_NETWORK_CHANGED') ||
+                                  error.message.includes('net::ERR') ||
+                                  error.message.includes('Connection refused');
+        
+        // For connection errors, use longer delays between retries
+        if (isConnectionError && attempt < maxRetries - 1) {
+          const connectionRetryDelay = (attempt + 1) * 5000; // 5s, 10s, 15s for connection errors
+          console.log(`Connection error detected, waiting ${connectionRetryDelay}ms before retry ${attempt + 2}/${maxRetries}...`);
+          await this.page.waitForTimeout(connectionRetryDelay);
+          continue;
+        }
+        
+        // If this is not the last attempt, continue to retry
+        if (attempt < maxRetries - 1) {
+          continue;
+        }
+        
+        // If this is the last attempt, throw the error with more context
+        const errorContext = isConnectionError 
+          ? `Connection refused by server - server may be overwhelmed or unavailable. Original error: ${error.message}`
+          : `Failed to navigate to login page after ${maxRetries} attempts: ${error.message}`;
+        throw new Error(errorContext);
+      }
+    }
+    
+    // This should never be reached, but just in case
+    if (lastError) {
+      throw lastError;
+    }
   }
 
   /**
@@ -42,8 +134,25 @@ class LoginPage {
    * @param {string} email - Email address to enter
    */
   async enterEmail(email) {
+    // Ensure we're on the login page
+    const currentUrl = this.page.url();
+    if (!currentUrl.includes('/auth/login')) {
+      // If not on login page, navigate there first
+      await this.goto();
+    }
+    
+    // Wait for page to be ready
+    await this.page.waitForLoadState('domcontentloaded');
+    
+    // Wait for email field to be visible
     const emailField = this.page.locator(this.emailInput).first();
-    await emailField.waitFor({ state: 'visible', timeout: 10000 });
+    await emailField.waitFor({ state: 'visible', timeout: 15000 });
+    
+    // Ensure field is enabled before filling
+    await expect(emailField).toBeEnabled({ timeout: 5000 });
+    
+    // Clear any existing value and fill
+    await emailField.clear();
     await emailField.fill(email);
   }
 
@@ -52,8 +161,15 @@ class LoginPage {
    * @param {string} password - Password to enter
    */
   async enterPassword(password) {
+    // Wait for password field to be visible
     const passwordField = this.page.locator(this.passwordInput).first();
-    await passwordField.waitFor({ state: 'visible', timeout: 10000 });
+    await passwordField.waitFor({ state: 'visible', timeout: 15000 });
+    
+    // Ensure field is enabled before filling
+    await expect(passwordField).toBeEnabled({ timeout: 5000 });
+    
+    // Clear any existing value and fill
+    await passwordField.clear();
     await passwordField.fill(password);
   }
 
@@ -135,13 +251,43 @@ class LoginPage {
 
   /**
    * Get error message if login fails
+   * Excludes instruction text like "Enter your credentials to access your account"
    */
   async getErrorMessage() {
-    // Adjust selector based on actual error message element
-    const errorElement = this.page.locator('alert, [role="alert"]').filter({ hasText: /Invalid|Error|Failed/i });
-    if (await errorElement.count() > 0 && await errorElement.first().isVisible()) {
-      return await errorElement.first().textContent();
+    // Try multiple selectors to find error messages
+    // Exclude common instruction/help text that might be mistaken for errors
+    const excludeText = /Enter your credentials|access your account|Please|Welcome|Sign In/i;
+    
+    const errorSelectors = [
+      '[role="alert"]',
+      '[class*="error"]:not([class*="instruction"])',
+      '[class*="alert"]:not([class*="info"])',
+      'text=/Invalid|Error|Failed|incorrect|wrong|denied|unauthorized|forbidden/i'
+    ];
+    
+    for (const selector of errorSelectors) {
+      try {
+        const errorElement = this.page.locator(selector).filter({ 
+          hasText: /Invalid|Error|Failed|incorrect|wrong|denied|unauthorized|forbidden|credentials.*invalid|password.*incorrect/i 
+        });
+        if (await errorElement.count() > 0) {
+          const isVisible = await errorElement.first().isVisible().catch(() => false);
+          if (isVisible) {
+            const text = await errorElement.first().textContent();
+            if (text && text.trim().length > 0) {
+              // Exclude instruction text
+              if (!excludeText.test(text)) {
+                return text.trim();
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Continue to next selector
+        continue;
+      }
     }
+    
     return null;
   }
 

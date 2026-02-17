@@ -9,7 +9,7 @@ module.exports = {
   credentials: {
     valid: {
       email: process.env.TEST_EMAIL || 'saima@maxenpower.com',
-      password: process.env.TEST_PASSWORD || 'Maxen12345@',
+      password: process.env.TEST_PASSWORD || 'maxen12345',
     },
     invalid: {
       email: 'invalid@example.com',

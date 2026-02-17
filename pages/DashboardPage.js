@@ -25,13 +25,42 @@ class DashboardPage {
    * Click the Tickets Manager button/link
    */
   async clickTicketsManager() {
-    // Use getByRole to target the button specifically (not the heading)
-    // The button is in the sidebar navigation
-    const button = this.page.getByRole('button', { name: 'Tickets Manager' });
-    await button.waitFor({ state: 'visible', timeout: 10000 });
-    await button.click();
-    // Wait for navigation to complete (use domcontentloaded instead of networkidle)
-    await this.page.waitForLoadState('networkidle');
+    // Wait for the welcome page to be fully loaded and stable
+    await this.page.waitForLoadState('networkidle', { timeout: 15000 });
+    
+    // Wait for the welcome message to appear, ensuring page is ready
+    await expect(this.page.locator('text=/Welcome/i')).toBeVisible({ timeout: 10000 });
+    
+    // The button has text "Ticket Manager" (singular, not "Tickets Manager")
+    // It contains SVG icons and may have an arrow (→) after the text
+    // Use locator with text filter - this is most reliable for buttons with icons
+    const button = this.page.locator('button').filter({ hasText: /Ticket Manager/i }).first();
+    
+    // Wait for button to be visible, enabled, and stable
+    await expect(button).toBeVisible({ timeout: 15000 });
+    await expect(button).toBeEnabled({ timeout: 5000 });
+    
+    // Ensure button is in viewport and clickable
+    await button.scrollIntoViewIfNeeded();
+    
+    // Wait a bit for any animations or transitions to complete
+    await this.page.waitForTimeout(500);
+    
+    // Verify button is still visible and enabled before clicking
+    await expect(button).toBeVisible();
+    await expect(button).toBeEnabled();
+    
+    // Get button bounding box to verify it's actually on screen
+    const box = await button.boundingBox();
+    if (!box || box.width === 0 || box.height === 0) {
+      throw new Error('Ticket Manager button is not visible or has zero size in viewport');
+    }
+    
+    // Click the button - use force: false to ensure it's actually clickable
+    await button.click({ timeout: 10000, force: false });
+    
+    // Wait for navigation to start
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /**
