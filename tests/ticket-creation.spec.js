@@ -26,57 +26,302 @@ async function selectComboboxOption(
   timeout = 10000
 ) {
   try {
-    // Find the label element
+    console.log(`Attempting to select "${optionText}" for "${label}"`);
+    
+    // Strategy 1: Find combobox by label text - most reliable
+    let comboboxTrigger = null;
+    
+    // First, try to find the label
     const labelElement = page.locator(`label:has-text("${label}")`).first();
-    await expect(labelElement).toBeVisible({ timeout });
-
-    // Find the combobox trigger button - it's usually after the label in the same container
-    // Try multiple strategies to find the button
-    let comboboxTrigger = page.locator(`label:has-text("${label}")`).locator('xpath=following-sibling::*//button').first();
+    const labelVisible = await labelElement.isVisible({ timeout: 3000 }).catch(() => false);
     
-    // Alternative: find button with role="combobox" near the label
-    if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
-      const labelParent = labelElement.locator('..');
-      comboboxTrigger = labelParent.locator('button[role="combobox"]').first();
+    if (labelVisible) {
+      // Find combobox button near the label - try multiple approaches
+      // Approach 1: Following sibling with combobox
+      comboboxTrigger = labelElement.locator('xpath=following-sibling::*//button[role="combobox"]').first();
+      
+      if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
+        // Approach 2: Parent container
+        const labelParent = labelElement.locator('..');
+        comboboxTrigger = labelParent.locator('button[role="combobox"]').first();
+      }
+      
+      if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
+        // Approach 3: Any following combobox button
+        comboboxTrigger = labelElement.locator('xpath=following::button[@role="combobox"][1]').first();
+      }
     }
     
-    // Another alternative: find any button after the label
-    if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
-      comboboxTrigger = labelElement.locator('xpath=following::button[1]').first();
+    // Strategy 2: Find by placeholder text (for Purpose: "Select purpose...")
+    if (!comboboxTrigger || !(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
+      const placeholderMap = {
+        'Purpose': 'Select purpose',
+        'Assign To': 'Select',
+        'Source': 'Select',
+        'Status': 'Select',
+        'Priority': 'Select'
+      };
+      
+      const placeholder = placeholderMap[label] || `Select ${label.toLowerCase()}`;
+      comboboxTrigger = page.locator(`button[role="combobox"]:has-text("${placeholder}")`).first();
+    }
+    
+    // Strategy 3: Find any combobox button and filter by context
+    if (!comboboxTrigger || !(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
+      // Get all combobox buttons and find the one near the label
+      const allComboboxes = page.locator('button[role="combobox"]');
+      const count = await allComboboxes.count();
+      
+      if (labelVisible) {
+        // Find the combobox closest to the label
+        for (let i = 0; i < count; i++) {
+          const cb = allComboboxes.nth(i);
+          const cbText = await cb.textContent().catch(() => '');
+          if (cbText.includes('Select') || cbText.includes(label)) {
+            comboboxTrigger = cb;
+            break;
+          }
+        }
+      }
     }
 
-    await comboboxTrigger.click({ timeout });
+    // Ensure we found the combobox trigger
+    if (!comboboxTrigger) {
+      throw new Error(`Could not find combobox trigger for "${label}"`);
+    }
     
-    // Wait for the popover/content to appear
-    await page.waitForTimeout(500);
+    await expect(comboboxTrigger).toBeVisible({ timeout });
+    console.log(`Found combobox for "${label}"`);
+    
+    // Scroll into view if needed
+    await comboboxTrigger.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    
+    // Check if combobox is already open (aria-expanded="true")
+    const isExpanded = await comboboxTrigger.getAttribute('aria-expanded');
+    console.log(`Combobox expanded state: ${isExpanded}`);
+    
+    // Click to open the combobox if not already open
+    if (isExpanded !== 'true') {
+      await comboboxTrigger.click({ timeout });
+      await page.waitForTimeout(500);
+    }
+    
+    // Wait for the popover/dialog to appear - try multiple selectors
+    const popoverSelectors = [
+      '[role="dialog"]',
+      '[role="listbox"]',
+      '[data-radix-popper-content-wrapper]',
+      '[data-radix-select-content]',
+      '.popover-content',
+      '[class*="popover"]'
+    ];
+    
+    let popoverVisible = false;
+    for (const selector of popoverSelectors) {
+      const popover = page.locator(selector).first();
+      if (await popover.isVisible({ timeout: 2000 }).catch(() => false)) {
+        popoverVisible = true;
+        console.log(`Popover found with selector: ${selector}`);
+        break;
+      }
+    }
+    
+    if (!popoverVisible) {
+      // Wait a bit more - sometimes the popover takes time to render
+      await page.waitForTimeout(1000);
+    }
     
     // Look for the search input in the popover (CommandInput)
-    const searchInput = page.locator('input[placeholder*="Search" i], input[placeholder*="search" i]').first();
-    if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+    // For Purpose dropdown, the placeholder is "Search purposes..."
+    // For Assign To dropdown, the placeholder is "Q Type to search..."
+    const searchInputSelectors = [
+      `input[placeholder*="Search ${label.toLowerCase()}" i]`,
+      `input[placeholder*="Search purposes" i]`,
+      `input[placeholder*="Type to search" i]`,
+      `input[placeholder*="type to search" i]`,
+      'input[placeholder*="Search" i]',
+      'input[placeholder*="search" i]',
+      'input[type="text"]',
+      'input[type="search"]'
+    ];
+    
+    let searchInput = null;
+    for (const selector of searchInputSelectors) {
+      searchInput = page.locator(selector).first();
+      if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        console.log(`Found search input with selector: ${selector}`);
+        break;
+      }
+      searchInput = null;
+    }
+    
+    // If search input is found, use it to filter options
+    if (searchInput && await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      console.log('Search input found, clearing and typing option text');
+      // Click to focus the search input
+      await searchInput.click();
+      await page.waitForTimeout(200);
+      
+      // Clear any existing text (select all and delete)
+      await searchInput.press('Control+a');
+      await searchInput.press('Delete');
+      await page.waitForTimeout(200);
+      
+      // Type the option text to filter
       await searchInput.fill(optionText);
-      await page.waitForTimeout(500); // Wait for debounce and filtering
+      await page.waitForTimeout(1000); // Wait for debounce and filtering to complete
+      
+      console.log(`Typed "${optionText}" in search input, waiting for filtered options...`);
+    } else {
+      console.log('No search input found, proceeding to find options directly');
     }
     
     // Find and click the option in the command list
+    // Wait a bit more for options to render after search filtering
+    await page.waitForTimeout(500);
+    
     // Try multiple selectors for the option
-    let option = page.locator(`[role="option"]:has-text("${optionText}")`).first();
+    let option = null;
+    
+    // Strategy 1: Exact text match with role="option" (most reliable)
+    option = page.locator(`[role="option"]:has-text("${optionText}")`).first();
+    if (!(await option.isVisible({ timeout: 3000 }).catch(() => false))) {
+      console.log('Strategy 1 failed, trying partial match...');
+      // Strategy 2: Partial match
+      option = page.locator(`[role="option"]`).filter({ hasText: optionText }).first();
+    }
     
     if (!(await option.isVisible({ timeout: 2000 }).catch(() => false))) {
+      console.log('Strategy 2 failed, trying case-insensitive match...');
+      // Strategy 3: Case-insensitive match
+      option = page.locator(`[role="option"]`).filter({ hasText: new RegExp(optionText, 'i') }).first();
+    }
+    
+    if (!(await option.isVisible({ timeout: 2000 }).catch(() => false))) {
+      console.log('Strategy 3 failed, trying div with text...');
+      // Strategy 4: Div with text (no role) - sometimes options don't have role="option"
       option = page.locator(`div:has-text("${optionText}"):visible`).first();
     }
     
     if (!(await option.isVisible({ timeout: 2000 }).catch(() => false))) {
-      // Try to find by partial match
-      option = page.locator(`[role="option"]`).filter({ hasText: optionText }).first();
+      console.log('Strategy 4 failed, trying any element with text...');
+      // Strategy 5: Any clickable element with the text
+      option = page.locator(`*:has-text("${optionText}"):visible`).first();
     }
     
-    await expect(option).toBeVisible({ timeout });
-    await option.click();
+    if (!(await option.isVisible({ timeout: 2000 }).catch(() => false))) {
+      // Strategy 6: Try to find by partial text match (for cases like "General - Customer Service")
+      const partialMatch = optionText.split(' ')[0]; // Get first word
+      option = page.locator(`[role="option"]`).filter({ hasText: partialMatch }).first();
+      console.log(`Trying partial match with first word: "${partialMatch}"`);
+    }
+    
+    // Ensure option is visible before clicking
+    if (!option || !(await option.isVisible({ timeout: 3000 }).catch(() => false))) {
+      // Take screenshot for debugging
+      await page.screenshot({ path: `combobox-${label.replace(/\s+/g, '-')}-options.png` }).catch(() => {});
+      
+      // Try to get all available options for debugging
+      const allOptions = page.locator('[role="option"]');
+      const optionCount = await allOptions.count();
+      console.log(`Found ${optionCount} options in dropdown`);
+      for (let i = 0; i < Math.min(optionCount, 10); i++) {
+        const optText = await allOptions.nth(i).textContent().catch(() => '');
+        console.log(`  Option ${i + 1}: "${optText}"`);
+      }
+      
+      throw new Error(`Could not find option "${optionText}" in dropdown for "${label}". Found ${optionCount} options.`);
+    }
+    
+    console.log(`Found option "${optionText}", checking if already selected...`);
+    await option.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+    
+    // Check if the option is already selected (has a tick icon)
+    // First, check what's currently selected in the combobox
+    const currentComboboxValue = await comboboxTrigger.textContent().catch(() => '');
+    console.log(`Current combobox value for "${label}": "${currentComboboxValue}"`);
+    
+    // If combobox shows "Select..." it means nothing is selected, so we must click
+    const needsSelection = currentComboboxValue.includes('Select') || currentComboboxValue.includes('...') || !currentComboboxValue.trim();
+    
+    let isSelected = false;
+    
+    // Only check for selection indicators if there's already a value in the combobox (not "Select...")
+    if (!needsSelection && currentComboboxValue.trim()) {
+      // Check if this specific option matches what's already selected
+      if (currentComboboxValue.includes(optionText) || optionText.includes(currentComboboxValue.split(' ')[0])) {
+        // Check for visual indicators (tick icon)
+        isSelected = await option.evaluate((el) => {
+          // Check for aria-selected
+          if (el.getAttribute('aria-selected') === 'true') return true;
+          if (el.getAttribute('data-selected') === 'true') return true;
+          
+          // Check for selected/checked classes (but be more specific)
+          const classes = el.className || '';
+          if (classes.includes('selected') || classes.includes('checked')) {
+            return true;
+          }
+          
+          // Check for checkmark icon inside - look for lucide-check or similar
+          const checkIcon = el.querySelector('svg[class*="lucide-check"], svg[class*="check"], [class*="check-icon"]');
+          if (checkIcon) {
+            // Verify it's actually visible
+            const style = window.getComputedStyle(checkIcon);
+            if (style.display !== 'none' && style.visibility !== 'hidden') {
+              return true;
+            }
+          }
+          
+          return false;
+        }).catch(() => false);
+      }
+    }
+    
+    if (isSelected && !needsSelection) {
+      console.log(`Option "${optionText}" is already selected (has tick icon), skipping click to avoid unselecting`);
+      
+      // Close the dropdown by clicking outside or pressing Escape
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+      
+      // Verify the selection is still there
+      const selectedValue = await comboboxTrigger.textContent();
+      console.log(`Current selected value after escape: "${selectedValue}"`);
+      
+      if (selectedValue && (selectedValue.includes(optionText) || (!selectedValue.includes('Select') && !selectedValue.includes('...')))) {
+        console.log(`✅ Option "${optionText}" is already selected for "${label}"`);
+        return; // Exit early since it's already selected
+      } else {
+        // If verification failed, proceed to click anyway
+        console.log(`⚠️ Verification failed, proceeding to click option anyway`);
+        isSelected = false;
+      }
+    }
+    
+    // If not selected or needs selection, click to select it
+    if (!isSelected || needsSelection) {
+      console.log(`Clicking option "${optionText}" to select it...`);
+      await option.click();
+    }
     
     // Wait for the selection to be applied and popover to close
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(800);
+    
+    // Verify the selection was applied
+    const selectedValue = await comboboxTrigger.textContent();
+    console.log(`Selected value after click: "${selectedValue}"`);
+    
+    if (selectedValue && (selectedValue.includes(optionText) || (!selectedValue.includes('Select') && !selectedValue.includes('...')))) {
+      console.log(`✅ Successfully selected "${optionText}" for "${label}"`);
+    } else {
+      console.log(`⚠️ Selection may not have worked. Current value: "${selectedValue}"`);
+    }
   } catch (error) {
-    console.error(`Error selecting combobox option "${optionText}" for label "${label}":`, error);
+    console.error(`❌ Error selecting combobox option "${optionText}" for label "${label}":`, error);
+    // Take a screenshot for debugging
+    await page.screenshot({ path: `combobox-error-${label.replace(/\s+/g, '-')}.png` }).catch(() => {});
     throw error;
   }
 }
@@ -113,27 +358,83 @@ async function fillTiptapEditor(page, content, addSignature = true) {
   
   // If signature is required, we need to add it
   if (addSignature) {
-    // Look for signature button in the editor toolbar
-    // Tiptap editor usually has a toolbar with buttons
-    const signatureButton = page.locator('button[title*="signature" i], button:has-text("Signature")').first();
+    console.log('Adding signature to message...');
     
-    if (await signatureButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    // Move to end of content first
+    await editor.press('End');
+    await page.waitForTimeout(300);
+    
+    // Look for signature button in the editor toolbar
+    // Try multiple selectors for signature button
+    const signatureButtonSelectors = [
+      'button[title*="signature" i]',
+      'button:has-text("Signature")',
+      'button[aria-label*="signature" i]',
+      '[data-tooltip*="signature" i]',
+      'button svg[class*="signature"]',
+      'button:has(svg) + button', // Try buttons near editor
+    ];
+    
+    let signatureButton = null;
+    for (const selector of signatureButtonSelectors) {
+      signatureButton = page.locator(selector).first();
+      if (await signatureButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        console.log(`Found signature button with selector: ${selector}`);
+        break;
+      }
+      signatureButton = null;
+    }
+    
+    if (signatureButton && await signatureButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+      console.log('Clicking signature button...');
       await signatureButton.click();
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(800);
       
       // Look for signature options in a dropdown/menu
-      const signatureOption = page.locator('[role="menuitem"]:has-text("Signature"), div:has-text("Signature")').first();
-      if (await signatureOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+      const signatureOptionSelectors = [
+        '[role="menuitem"]:has-text("Signature")',
+        'div:has-text("Signature"):visible',
+        '[role="option"]:has-text("Signature")',
+        'button:has-text("Signature"):visible'
+      ];
+      
+      let signatureOption = null;
+      for (const selector of signatureOptionSelectors) {
+        signatureOption = page.locator(selector).first();
+        if (await signatureOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+          console.log(`Found signature option with selector: ${selector}`);
+          break;
+        }
+        signatureOption = null;
+      }
+      
+      if (signatureOption && await signatureOption.isVisible({ timeout: 2000 }).catch(() => false)) {
         await signatureOption.click();
+        await page.waitForTimeout(1000);
+        console.log('✅ Signature added via button');
+      } else {
+        console.log('Signature option not found, trying alternative method...');
+        // Fallback: try to insert signature manually
+        await editor.press('End');
+        await page.waitForTimeout(200);
+        await editor.type('\n\n---\nTest Signature', { delay: 50 });
         await page.waitForTimeout(500);
       }
     } else {
       // If no signature button found, try to append signature text manually
-      // Move to end of content
+      console.log('No signature button found, adding signature text manually...');
       await editor.press('End');
       await page.waitForTimeout(200);
       await editor.type('\n\n---\nTest Signature', { delay: 50 });
       await page.waitForTimeout(500);
+    }
+    
+    // Verify signature was added by checking editor content
+    const editorContent = await editor.textContent().catch(() => '');
+    if (editorContent.includes('Signature') || editorContent.includes('signature')) {
+      console.log('✅ Signature appears to be in editor content');
+    } else {
+      console.log('⚠️ Signature may not have been added, but continuing...');
     }
   }
   
@@ -148,25 +449,81 @@ async function fillAutoComplete(
   value,
   timeout = 10000
 ) {
-  const labelElement = page.locator(`label:has-text("${label}")`).first();
-  await expect(labelElement).toBeVisible({ timeout });
-  
-  // Find the input field near the label
-  const labelContainer = labelElement.locator('..');
-  const input = labelContainer.locator('input').first();
-  
-  await input.fill(value);
-  await page.waitForTimeout(500);
-  
-  // If there's a dropdown, select the first option or press Enter
-  const dropdownOption = page.locator('[role="option"]').first();
-  if (await dropdownOption.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await dropdownOption.click();
-  } else {
-    await input.press('Enter');
+  try {
+    console.log(`Filling autocomplete "${label}" with value: "${value}"`);
+    
+    // Strategy 1: Find input by placeholder (most reliable)
+    const placeholderMap = {
+      'Contact Phone': 'Search by name or phone',
+      'To Recipients': 'Type email'
+    };
+    const placeholder = placeholderMap[label] || label;
+    
+    let input = page.locator(`input[placeholder*="${placeholder}" i]`).first();
+    
+    // Strategy 2: Find by label if placeholder doesn't work
+    if (!(await input.isVisible({ timeout: 2000 }).catch(() => false))) {
+      const labelElement = page.locator(`label:has-text("${label}")`).first();
+      if (await labelElement.isVisible({ timeout: 2000 }).catch(() => false)) {
+        // Find input near the label
+        const labelParent = labelElement.locator('..');
+        input = labelParent.locator('input').first();
+        
+        if (!(await input.isVisible({ timeout: 2000 }).catch(() => false))) {
+          input = labelElement.locator('xpath=following::input[1]').first();
+        }
+      }
+    }
+    
+    // Strategy 3: Try generic phone/email input
+    if (!(await input.isVisible({ timeout: 2000 }).catch(() => false))) {
+      if (label.includes('Phone')) {
+        input = page.locator('input[placeholder*="phone" i]').first();
+      } else if (label.includes('email') || label.includes('Recipients')) {
+        input = page.locator('input[placeholder*="email" i]').first();
+      }
+    }
+    
+    await expect(input).toBeVisible({ timeout });
+    await input.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    
+    // Clear and fill the input
+    console.log(`Clicking and filling input for "${label}"...`);
+    await input.click();
+    await page.waitForTimeout(200);
+    
+    // Clear any existing value
+    await input.clear();
+    await page.waitForTimeout(200);
+    
+    // Fill the value
+    await input.fill(value);
+    await page.waitForTimeout(800); // Wait for autocomplete suggestions to appear
+    
+    // If there's a dropdown with options, select the first one or press Enter
+    const dropdownOption = page.locator('[role="option"]').first();
+    if (await dropdownOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+      console.log('Found dropdown option, clicking...');
+      await dropdownOption.click();
+      await page.waitForTimeout(500);
+    } else {
+      // Press Enter to confirm the input
+      console.log('No dropdown option found, pressing Enter...');
+      await input.press('Enter');
+      await page.waitForTimeout(500);
+    }
+    
+    // Verify the value was set
+    const inputValue = await input.inputValue().catch(() => '');
+    console.log(`Input value after fill: "${inputValue}"`);
+    
+    console.log(`✅ Filled autocomplete "${label}"`);
+  } catch (error) {
+    console.error(`❌ Error filling autocomplete "${label}":`, error);
+    await page.screenshot({ path: `autocomplete-error-${label.replace(/\s+/g, '-')}.png` }).catch(() => {});
+    throw error;
   }
-  
-  await page.waitForTimeout(300);
 }
 
 test.describe('Ticket Creation', () => {
@@ -207,11 +564,11 @@ test.describe('Ticket Creation', () => {
     // ============================================
     const testData = {
       subject: 'Test Ticket - Automated Playwright Test',
-      purpose: 'Support', // Change to match your actual purpose options
+      purpose: 'General - Customer Service', // Change to match your actual purpose options (e.g., "General - Customer Service", "Meter Reading Dispute - Customer Service")
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'John Doe', // Change to match actual user names in your system
+      assignTo: 'Reads', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
       source: 'Email', // Change to match your actual source options
-      status: 'Open', // Change to match your actual status options
+      status: 'Assigned', // Change to match your actual status options
       priority: 'Medium', // Change to match your actual priority options (Low, Medium, High, etc.)
       slaType: 'Standard', // Change to match your actual SLA options
       contactName: 'Test Contact',
@@ -269,31 +626,135 @@ test.describe('Ticket Creation', () => {
     }
     
     // Navigate to Contact Info tab
+    console.log('Navigating to Contact Info tab...');
     const contactTab = page.locator('button:has-text("Contact Info"), button:has-text("Contact")').first();
-    if (await contactTab.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await expect(contactTab).toBeVisible({ timeout: 5000 });
+    
+    // Check if tab is already active
+    const isActive = await contactTab.evaluate((el) => {
+      return el.classList.contains('active') || 
+             el.getAttribute('aria-selected') === 'true' ||
+             el.classList.contains('bg-blue') ||
+             el.classList.contains('text-blue');
+    }).catch(() => false);
+    
+    if (!isActive) {
       await contactTab.click();
-      await page.waitForTimeout(500);
+      console.log('Clicked Contact Info tab');
+    } else {
+      console.log('Contact Info tab is already active');
     }
     
-    // Fill Contact Name (required)
-    const contactNameInput = page.locator('input[placeholder*="Contact name" i], input[placeholder*="Contact Name"]').first();
-    await expect(contactNameInput).toBeVisible({ timeout: 5000 });
-    await contactNameInput.fill(testData.contactName);
+    // Wait for tab content to load
+    await page.waitForTimeout(1500);
     
-    // Fill Contact Phone (required)
+    // Wait for Contact Info fields to be visible - try multiple selectors
+    console.log('Waiting for Contact Info fields...');
+    const contactNameSelectors = [
+      'input[placeholder*="Contact name" i]',
+      'input[placeholder*="Contact Name" i]',
+      'label:has-text("Contact Name") + * input',
+      'label:has-text("Contact Name") ~ * input'
+    ];
+    
+    let contactNameInput = null;
+    for (const selector of contactNameSelectors) {
+      contactNameInput = page.locator(selector).first();
+      if (await contactNameInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+        console.log(`Found Contact Name input with selector: ${selector}`);
+        break;
+      }
+      contactNameInput = null;
+    }
+    
+    if (!contactNameInput) {
+      // Fallback: find by label and then input
+      const contactNameLabel = page.locator('label:has-text("Contact Name")').first();
+      if (await contactNameLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
+        const labelParent = contactNameLabel.locator('..');
+        contactNameInput = labelParent.locator('input').first();
+        if (!(await contactNameInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+          contactNameInput = contactNameLabel.locator('xpath=following::input[1]').first();
+        }
+      }
+    }
+    
+    await expect(contactNameInput).toBeVisible({ timeout: 10000 });
+    
+    // Fill Contact Name (required)
+    console.log('Filling Contact Name...');
+    await contactNameInput.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await contactNameInput.click();
+    await page.waitForTimeout(200);
+    await contactNameInput.fill(testData.contactName);
+    await page.waitForTimeout(500);
+    
+    // Verify Contact Name was filled
+    const contactNameValue = await contactNameInput.inputValue();
+    console.log(`Contact Name value after fill: "${contactNameValue}"`);
+    if (contactNameValue !== testData.contactName) {
+      // Retry filling
+      await contactNameInput.clear();
+      await contactNameInput.fill(testData.contactName);
+      await page.waitForTimeout(300);
+    }
+    
+    // Fill Contact Phone (required) - autocomplete field
+    console.log('Filling Contact Phone...');
     await fillAutoComplete(page, 'Contact Phone', testData.contactPhone);
     
     // Fill To Recipients (required) - email field
-    const toRecipientsInput = page.locator('input[placeholder*="email" i], input[placeholder*="Type email"]').first();
-    await expect(toRecipientsInput).toBeVisible({ timeout: 5000 });
+    console.log('Filling To Recipients...');
+    const toRecipientsSelectors = [
+      'input[placeholder*="Type email" i]',
+      'input[placeholder*="email" i]',
+      'label:has-text("To Recipients") + * input',
+      'label:has-text("To Recipients") ~ * input'
+    ];
+    
+    let toRecipientsInput = null;
+    for (const selector of toRecipientsSelectors) {
+      toRecipientsInput = page.locator(selector).first();
+      if (await toRecipientsInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+        console.log(`Found To Recipients input with selector: ${selector}`);
+        break;
+      }
+      toRecipientsInput = null;
+    }
+    
+    if (!toRecipientsInput) {
+      // Fallback: find by label
+      const toRecipientsLabel = page.locator('label:has-text("To Recipients")').first();
+      if (await toRecipientsLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
+        const labelParent = toRecipientsLabel.locator('..');
+        toRecipientsInput = labelParent.locator('input').first();
+        if (!(await toRecipientsInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+          toRecipientsInput = toRecipientsLabel.locator('xpath=following::input[1]').first();
+        }
+      }
+    }
+    
+    await expect(toRecipientsInput).toBeVisible({ timeout: 10000 });
+    await toRecipientsInput.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await toRecipientsInput.click();
+    await page.waitForTimeout(200);
     await toRecipientsInput.fill(testData.contactEmail);
+    await page.waitForTimeout(300);
     await toRecipientsInput.press('Enter');
     await page.waitForTimeout(500);
     
+    // Verify To Recipients was filled
+    const toRecipientsValue = await toRecipientsInput.inputValue().catch(() => '');
+    console.log(`To Recipients value after fill: "${toRecipientsValue}"`);
+    
     // Optional: Fill Reference No if visible
+    console.log('Checking for Reference No field...');
     const refNoInput = page.locator('input[placeholder*="Reference number" i], input[placeholder*="Reference No"]').first();
     if (await refNoInput.isVisible({ timeout: 2000 }).catch(() => false)) {
       await refNoInput.fill(testData.referenceNo);
+      console.log('Filled Reference No');
     }
     
     // Wait a moment for all fields to be processed
