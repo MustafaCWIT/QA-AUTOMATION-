@@ -8,7 +8,7 @@ module.exports = {
   // Test credentials - Update with your test account details
   credentials: {
     valid: {
-      email: process.env.TEST_EMAIL || 'saima@maxenpower.com',
+      email: process.env.TEST_EMAIL || 'testreads@maxenpower.com',
       password: process.env.TEST_PASSWORD || 'maxen12345',
     },
     invalid: {

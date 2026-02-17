@@ -435,17 +435,31 @@ test.describe('Login Page Tests', () => {
             await expect(page).toHaveURL(/.*dashboard\/welcome/);
             console.log(`  ✅ [${index + 1}/${emails.length}] Navigated to welcome page for ${email}`);
             
-            // Step 3: Click Tickets Manager button from welcome screen
-            const dashboardPage = new DashboardPage(page);
-            await dashboardPage.clickTicketsManager();
-            console.log(`  ✅ [${index + 1}/${emails.length}] Clicked Ticket Manager button for ${email}`);
+            // Step 3: Navigate directly to tickets-manager page
+            await page.goto('http://46.62.211.210:4003/dashboard/tickets-manager', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForLoadState('networkidle').catch(() => {});
+            console.log(`  ✅ [${index + 1}/${emails.length}] Navigated to tickets manager for ${email}`);
             
-            // Step 4: Wait for navigation to tickets manager page
-            await dashboardPage.waitForTicketsManagerPage();
-            
-            // Step 5: Verify we're on tickets manager page
+            // Step 4: Verify we're on tickets manager page
             await expect(page).toHaveURL(/.*dashboard\/tickets-manager/);
-            console.log(`  ✅ [${index + 1}/${emails.length}] Successfully navigated to tickets manager for ${email}`);
+            
+            // Step 5: Refresh the page two times
+            console.log(`  🔄 [${index + 1}/${emails.length}] Refreshing tickets manager page (1/2) for ${email}`);
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForLoadState('networkidle').catch(() => {});
+            
+            // Wait 10 seconds between refreshes
+            console.log(`  ⏳ [${index + 1}/${emails.length}] Waiting 10 seconds before second refresh for ${email}`);
+            await page.waitForTimeout(10000);
+            
+            console.log(`  🔄 [${index + 1}/${emails.length}] Refreshing tickets manager page (2/2) for ${email}`);
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForLoadState('networkidle').catch(() => {});
+            await page.waitForTimeout(1000);
+            
+            // Step 6: Verify still on tickets manager page after refreshes
+            await expect(page).toHaveURL(/.*dashboard\/tickets-manager/);
+            console.log(`  ✅ [${index + 1}/${emails.length}] Successfully refreshed tickets manager 2x for ${email}`);
             
             // Mark as successful
             results.successful.push(email);
