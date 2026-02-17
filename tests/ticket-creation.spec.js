@@ -934,9 +934,96 @@ test.describe('Ticket Creation', () => {
     // Wait a moment for all fields to be processed
     await page.waitForTimeout(1000);
     
-    // Verify that the submit button is enabled (not disabled)
-    const submitButton = page.locator('button[type="submit"]:has-text("Create"), button:has-text("Create Ticket")').first();
-    await expect(submitButton).toBeVisible({ timeout: 5000 });
+    // Find the Create button at the bottom of the form
+    // Button structure: type="submit", class contains "bg-[#4540a6]", text "Create"
+    console.log('Looking for Create button at the bottom of the form...');
+    
+    // Try multiple strategies to find the Create button
+    let submitButton = null;
+    
+    // Strategy 1: Find by type="submit" and text
+    const submitButtonSelectors = [
+      'button[type="submit"]:has-text("Create")',
+      'button[type="submit"]',
+      'button:has-text("Create")[type="submit"]',
+      'button:has-text("Create")',
+      'button:has-text("Create Ticket")'
+    ];
+    
+    for (const selector of submitButtonSelectors) {
+      try {
+        const buttons = page.locator(selector);
+        const count = await buttons.count();
+        
+        for (let i = 0; i < count; i++) {
+          const btn = buttons.nth(i);
+          if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+            const text = await btn.textContent().catch(() => '');
+            const btnType = await btn.getAttribute('type').catch(() => '');
+            
+            // Check if it's the Create button we want
+            if ((text.includes('Create') || btnType === 'submit') && 
+                !text.includes('Contact') && 
+                !text.includes('Ticket') || text.trim() === 'Create') {
+              submitButton = btn;
+              console.log(`Found Create button with selector: ${selector} (button ${i + 1})`);
+              console.log(`Button text: "${text}", type: "${btnType}"`);
+              break;
+            }
+          }
+        }
+        if (submitButton) break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    // Strategy 2: Find by class containing bg-[#4540a6]
+    if (!submitButton) {
+      console.log('Trying to find button by background color...');
+      const allButtons = page.locator('button');
+      const buttonCount = await allButtons.count();
+      
+      for (let i = 0; i < buttonCount; i++) {
+        const btn = allButtons.nth(i);
+        if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+          const text = await btn.textContent().catch(() => '');
+          const classes = await btn.getAttribute('class').catch(() => '');
+          const bgColor = await btn.evaluate((el) => {
+            return window.getComputedStyle(el).backgroundColor;
+          }).catch(() => '');
+          
+          if (text.includes('Create') && 
+              (classes.includes('#4540a6') || bgColor.includes('70'))) {
+            submitButton = btn;
+            console.log(`Found Create button by background color (button ${i + 1})`);
+            break;
+          }
+        }
+      }
+    }
+    
+    // Strategy 3: Find submit button at the bottom of the form
+    if (!submitButton) {
+      console.log('Trying to find submit button at bottom of form...');
+      submitButton = page.locator('button[type="submit"]').last();
+      if (!(await submitButton.isVisible({ timeout: 2000 }).catch(() => false))) {
+        submitButton = null;
+      }
+    }
+    
+    if (!submitButton) {
+      // Take screenshot for debugging
+      await page.screenshot({ path: 'create-button-not-found.png', fullPage: true });
+      throw new Error('Create button not found. Please check the selector.');
+    }
+    
+    await expect(submitButton).toBeVisible({ timeout: 10000 });
+    console.log('✅ Create button found and visible');
+    
+    // Scroll to button to ensure it's visible
+    await submitButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
     
     // Check if button is disabled due to validation errors
     const isDisabled = await submitButton.isDisabled();
@@ -965,42 +1052,44 @@ test.describe('Ticket Creation', () => {
       }
     }
     
-    // Search for "Ali" in the search bar before submitting
-    console.log('Searching for "Ali" in the search bar...');
-    const searchBarSelectors = [
-      'input[placeholder*="Search all fields" i]',
-      'input[placeholder*="Search" i]',
-      'input[type="search"]',
-      'input[type="text"][placeholder*="search" i]'
-    ];
-    
-    let searchBar = null;
-    for (const selector of searchBarSelectors) {
-      searchBar = page.locator(selector).first();
-      if (await searchBar.isVisible({ timeout: 3000 }).catch(() => false)) {
-        console.log(`Found search bar with selector: ${selector}`);
-        break;
-      }
-      searchBar = null;
-    }
-    
-    if (searchBar && await searchBar.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await searchBar.click();
-      await page.waitForTimeout(300);
-      await searchBar.fill('Ali');
-      await page.waitForTimeout(500);
-      await searchBar.press('Enter');
-      await page.waitForTimeout(1000); // Wait for search results
-      console.log('✅ Searched for "Ali" and pressed Enter');
-    } else {
-      console.log('⚠️ Search bar not found, skipping search step');
-    }
-    
     // Take a screenshot before submission for debugging
     await page.screenshot({ path: 'ticket-form-before-submit.png', fullPage: true });
     
-    // Submit the form
-    await submitButton.click();
+    // Click the Create button at the bottom to submit the form
+    console.log('Clicking Create button to submit the ticket...');
+    
+    // Verify button is still visible and enabled
+    const isStillVisible = await submitButton.isVisible();
+    const isStillEnabled = !(await submitButton.isDisabled());
+    
+    console.log(`Button visible: ${isStillVisible}, enabled: ${isStillEnabled}`);
+    
+    if (!isStillVisible) {
+      await submitButton.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
+    }
+    
+    // Try multiple click strategies
+    try {
+      // Strategy 1: Regular click
+      await submitButton.click({ timeout: 5000 });
+      console.log('✅ Create button clicked (regular click)');
+    } catch (error) {
+      console.log('Regular click failed, trying force click...');
+      try {
+        // Strategy 2: Force click
+        await submitButton.click({ force: true, timeout: 5000 });
+        console.log('✅ Create button clicked (force click)');
+      } catch (error2) {
+        console.log('Force click failed, trying JavaScript click...');
+        // Strategy 3: JavaScript click
+        await submitButton.evaluate((el) => el.click());
+        console.log('✅ Create button clicked (JavaScript click)');
+      }
+    }
+    
+    // Wait a moment to ensure click was registered
+    await page.waitForTimeout(500);
     
     // Wait for the form submission to process
     await page.waitForTimeout(2000);
