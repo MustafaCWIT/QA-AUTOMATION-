@@ -724,22 +724,65 @@ test.describe('Ticket Creation', () => {
       }
     }
     
-    // Navigate to Contact Info tab
-    console.log('Navigating to Contact Info tab...');
-    const contactTab = page.locator('button:has-text("Contact Info"), button:has-text("Contact")').first();
+    // Navigate to Contact Info tab after SLA
+    console.log('Navigating to Contact Info tab after SLA...');
+    
+    // Find Contact Info tab using multiple strategies
+    const contactTabSelectors = [
+      'button:has-text("Contact Info"):has(svg.lucide-user)',
+      'button:has-text("Contact Info")',
+      'button:has-text("Contact")',
+      'button[type="button"]:has-text("Contact Info")'
+    ];
+    
+    let contactTab = null;
+    for (const selector of contactTabSelectors) {
+      contactTab = page.locator(selector).first();
+      if (await contactTab.isVisible({ timeout: 2000 }).catch(() => false)) {
+        console.log(`Found Contact Info tab with selector: ${selector}`);
+        break;
+      }
+      contactTab = null;
+    }
+    
+    if (!contactTab) {
+      throw new Error('Contact Info tab not found');
+    }
+    
     await expect(contactTab).toBeVisible({ timeout: 5000 });
     
-    // Check if tab is already active
+    // Check if tab is already active by checking for the selected styles
     const isActive = await contactTab.evaluate((el) => {
-      return el.classList.contains('active') || 
+      const classes = el.className || '';
+      const bgColor = window.getComputedStyle(el).backgroundColor;
+      const borderColor = window.getComputedStyle(el).borderBottomColor;
+      
+      // Check for active indicators
+      return classes.includes('bg-[#4540a6]') || 
+             classes.includes('bg-blue') ||
              el.getAttribute('aria-selected') === 'true' ||
-             el.classList.contains('bg-blue') ||
-             el.classList.contains('text-blue');
+             bgColor.includes('70') || // rgb(69, 64, 166) = #4540a6
+             borderColor.includes('70');
     }).catch(() => false);
     
     if (!isActive) {
+      console.log('Clicking Contact Info tab...');
       await contactTab.click();
-      console.log('Clicked Contact Info tab');
+      await page.waitForTimeout(500);
+      
+      // Verify tab is now active
+      const isNowActive = await contactTab.evaluate((el) => {
+        const classes = el.className || '';
+        return classes.includes('bg-[#4540a6]') || 
+               classes.includes('bg-blue') ||
+               el.getAttribute('aria-selected') === 'true';
+      }).catch(() => false);
+      
+      if (isNowActive) {
+        console.log('✅ Contact Info tab is now active');
+      } else {
+        console.log('⚠️ Contact Info tab clicked but may not be active');
+      }
     } else {
       console.log('Contact Info tab is already active');
     }
@@ -837,16 +880,48 @@ test.describe('Ticket Creation', () => {
     await expect(toRecipientsInput).toBeVisible({ timeout: 10000 });
     await toRecipientsInput.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
+    
+    // Click to focus the input field
     await toRecipientsInput.click();
     await page.waitForTimeout(200);
+    
+    // Clear any existing value
+    await toRecipientsInput.clear();
+    await page.waitForTimeout(200);
+    
+    // Fill the email address
+    console.log(`Entering email: "${testData.contactEmail}"`);
     await toRecipientsInput.fill(testData.contactEmail);
     await page.waitForTimeout(300);
-    await toRecipientsInput.press('Enter');
-    await page.waitForTimeout(500);
     
-    // Verify To Recipients was filled
+    // Verify email was typed
+    const emailValueBeforeEnter = await toRecipientsInput.inputValue().catch(() => '');
+    console.log(`Email value before pressing Enter: "${emailValueBeforeEnter}"`);
+    
+    if (!emailValueBeforeEnter || !emailValueBeforeEnter.includes(testData.contactEmail)) {
+      // Retry if email wasn't entered
+      console.log('Retrying to enter email...');
+      await toRecipientsInput.clear();
+      await toRecipientsInput.fill(testData.contactEmail);
+      await page.waitForTimeout(300);
+    }
+    
+    // Press Enter to confirm/add the email
+    console.log('Pressing Enter to confirm email entry...');
+    await toRecipientsInput.press('Enter');
+    await page.waitForTimeout(800); // Wait for email to be processed/added
+    
+    // Verify To Recipients was filled/processed
     const toRecipientsValue = await toRecipientsInput.inputValue().catch(() => '');
-    console.log(`To Recipients value after fill: "${toRecipientsValue}"`);
+    console.log(`To Recipients value after pressing Enter: "${toRecipientsValue}"`);
+    
+    // Check if email was added (might be in a tag/chip format, so input might be cleared)
+    const emailAdded = toRecipientsValue === '' || toRecipientsValue.includes(testData.contactEmail);
+    if (emailAdded) {
+      console.log('✅ Email entered and Enter pressed successfully');
+    } else {
+      console.log('⚠️ Email may not have been processed, but continuing...');
+    }
     
     // Optional: Fill Reference No if visible
     console.log('Checking for Reference No field...');
@@ -888,6 +963,37 @@ test.describe('Ticket Creation', () => {
         await editor.type('\n\n---\nTest Signature');
         await page.waitForTimeout(500);
       }
+    }
+    
+    // Search for "Ali" in the search bar before submitting
+    console.log('Searching for "Ali" in the search bar...');
+    const searchBarSelectors = [
+      'input[placeholder*="Search all fields" i]',
+      'input[placeholder*="Search" i]',
+      'input[type="search"]',
+      'input[type="text"][placeholder*="search" i]'
+    ];
+    
+    let searchBar = null;
+    for (const selector of searchBarSelectors) {
+      searchBar = page.locator(selector).first();
+      if (await searchBar.isVisible({ timeout: 3000 }).catch(() => false)) {
+        console.log(`Found search bar with selector: ${selector}`);
+        break;
+      }
+      searchBar = null;
+    }
+    
+    if (searchBar && await searchBar.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await searchBar.click();
+      await page.waitForTimeout(300);
+      await searchBar.fill('Ali');
+      await page.waitForTimeout(500);
+      await searchBar.press('Enter');
+      await page.waitForTimeout(1000); // Wait for search results
+      console.log('✅ Searched for "Ali" and pressed Enter');
+    } else {
+      console.log('⚠️ Search bar not found, skipping search step');
     }
     
     // Take a screenshot before submission for debugging
