@@ -658,6 +658,7 @@ test.describe('Ticket Creation', () => {
   });
 
   test('should create a ticket with all required fields', async ({ page }) => {
+    test.setTimeout(120000); // 2 minutes - form filling + submission + redirect takes time
     // ============================================
     // IMPORTANT: Customize these values based on your actual data
     // ============================================
@@ -1088,7 +1089,15 @@ test.describe('Ticket Creation', () => {
       }
     }
     
-    console.log('✅ Create button clicked successfully - test complete.');
+    // Wait for redirection back to tickets manager page after ticket creation
+    console.log('Waiting for redirection to tickets manager page...');
+    await page.waitForURL('http://46.62.211.210:4003/dashboard/tickets-manager', { timeout: 30000 });
+    console.log('✅ Redirected to tickets manager page.');
+
+    // Wait for the "created successfully" toast to appear on the tickets manager screen
+    console.log('Waiting for "created successfully" toast message...');
+    await expect(page.getByText('created successfully')).toBeVisible({ timeout: 30000 });
+    console.log('✅ Ticket created successfully!');
   });
 
   test('should validate required fields', async ({ page }) => {
