@@ -1103,22 +1103,315 @@ test.describe('Ticket Creation', () => {
   test('should validate required fields', async ({ page }) => {
     // Try to submit without filling required fields
     const submitButton = page.locator('button[type="submit"]:has-text("Create")').first();
-    
+
     // The button should be disabled if validation fails
     // Or we can try clicking and check for error messages
     if (!(await submitButton.isDisabled())) {
       await submitButton.click();
       await page.waitForTimeout(1000);
-      
+
       // Check for validation error messages
       const errorMessages = page.locator('.text-red-600, .text-red-500, text=/required|please enter|please select/i');
       const errorCount = await errorMessages.count();
-      
+
       expect(errorCount).toBeGreaterThan(0);
       console.log(`Found ${errorCount} validation error(s)`);
     } else {
       console.log('Submit button is disabled - validation is working');
     }
+  });
+
+  test('should create 50 tickets simultaneously', async ({ browser }) => {
+    test.setTimeout(3600000); // 60 minutes
+
+    const TOTAL_TICKETS = 50;
+    const BATCH_SIZE = 5;
+    const results = { successful: [], failed: [] };
+
+    const baseTestData = {
+      purpose: 'General - Customer Service',
+      message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
+      assignTo: 'Reads',
+      source: 'Email',
+      status: 'Assigned',
+      priority: 'Medium',
+      slaType: 'Higher',
+      contactName: 'Test Contact',
+      contactPhone: '1234567890',
+      contactEmail: 'test@example.com',
+      referenceNo: 'REF-12345',
+    };
+
+    async function createSingleTicket(browser, ticketIndex) {
+      let context;
+      try {
+        console.log(`[${ticketIndex + 1}/${TOTAL_TICKETS}] Starting ticket creation...`);
+
+        // Create a new browser context with saved auth state
+        context = await browser.newContext({
+          baseURL: 'http://46.62.211.210:4003',
+          storageState: '.auth/user.json',
+          recordVideo: {
+            dir: 'test-results/videos/',
+            size: { width: 1280, height: 720 }
+          }
+        });
+        const page = await context.newPage();
+
+        // Navigate to tickets manager
+        const ticketsManagerPage = new TicketsManagerPage(page);
+        await ticketsManagerPage.goto();
+        await ticketsManagerPage.verifyTicketsManagerPage();
+
+        // Open ticket creation form
+        await ticketsManagerPage.clickAddTicket();
+        await ticketsManagerPage.waitForTicketForm();
+        await ticketsManagerPage.verifyTicketFormOpen();
+
+        // Click the "Create" tab button
+        const createTabButton = page.locator('button[data-id="Create"]').first();
+        await expect(createTabButton).toBeVisible({ timeout: 10000 });
+        await createTabButton.click();
+        await page.waitForTimeout(1000);
+
+        // Wait for form to load
+        const subjectInput = page.locator('input[placeholder*="Subject" i], input[placeholder*="Enter Subject"]').first();
+        await expect(subjectInput).toBeVisible({ timeout: 15000 });
+
+        // Fill Subject with unique name
+        const uniqueSubject = `Test Ticket #${ticketIndex + 1} - Automated Playwright Test`;
+        await subjectInput.fill(uniqueSubject);
+        console.log(`[${ticketIndex + 1}/${TOTAL_TICKETS}] Subject: ${uniqueSubject}`);
+
+        // Fill Purpose
+        await selectComboboxOption(page, 'Purpose', baseTestData.purpose);
+
+        // Fill Message
+        await fillTiptapEditor(page, baseTestData.message, true);
+
+        // Fill Assign To
+        await selectComboboxOption(page, 'Assign To', baseTestData.assignTo);
+
+        // Fill Source
+        await selectComboboxOption(page, 'Source', baseTestData.source);
+
+        // Fill Status
+        await selectComboboxOption(page, 'Status', baseTestData.status);
+
+        // Fill Priority
+        await selectComboboxOption(page, 'Priority', baseTestData.priority);
+
+        // Fill SLA if tab exists
+        const slaTab = page.locator('button:has-text("SLA")').first();
+        if (await slaTab.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await slaTab.click();
+          await page.waitForTimeout(500);
+
+          const slaTypeInput = page.locator('input[placeholder*="SLA"], button:has-text("Select SLA")').first();
+          if (await slaTypeInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await selectComboboxOption(page, 'SLA Type', baseTestData.slaType);
+          }
+
+          const responseTimeInput = page.locator('input[placeholder*="Response Time" i], input[placeholder*="HH:MM:SS"]').first();
+          if (await responseTimeInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await responseTimeInput.fill('02:30:00');
+          }
+
+          const resolutionTimeInput = page.locator('input[placeholder*="Resolution Time" i], input[placeholder*="HH:MM:SS"]').last();
+          if (await resolutionTimeInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await resolutionTimeInput.fill('24:00:00');
+          }
+        }
+
+        // Navigate to Contact Info tab
+        const contactTabSelectors = [
+          'button:has-text("Contact Info"):has(svg.lucide-user)',
+          'button:has-text("Contact Info")',
+          'button:has-text("Contact")',
+          'button[type="button"]:has-text("Contact Info")'
+        ];
+
+        let contactTab = null;
+        for (const selector of contactTabSelectors) {
+          contactTab = page.locator(selector).first();
+          if (await contactTab.isVisible({ timeout: 2000 }).catch(() => false)) break;
+          contactTab = null;
+        }
+
+        if (contactTab) {
+          const isActive = await contactTab.evaluate((el) => {
+            const classes = el.className || '';
+            return classes.includes('bg-[#4540a6]') || el.getAttribute('aria-selected') === 'true';
+          }).catch(() => false);
+
+          if (!isActive) {
+            await contactTab.click();
+            await page.waitForTimeout(500);
+          }
+        }
+
+        await page.waitForTimeout(1500);
+
+        // Fill Contact Name
+        const contactNameSelectors = [
+          'input[placeholder*="Contact name" i]',
+          'input[placeholder*="Contact Name" i]'
+        ];
+        let contactNameInput = null;
+        for (const selector of contactNameSelectors) {
+          contactNameInput = page.locator(selector).first();
+          if (await contactNameInput.isVisible({ timeout: 3000 }).catch(() => false)) break;
+          contactNameInput = null;
+        }
+        if (!contactNameInput) {
+          const contactNameLabel = page.locator('label:has-text("Contact Name")').first();
+          if (await contactNameLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
+            contactNameInput = contactNameLabel.locator('xpath=following::input[1]').first();
+          }
+        }
+        if (contactNameInput) {
+          await contactNameInput.scrollIntoViewIfNeeded();
+          await contactNameInput.click();
+          await contactNameInput.fill(baseTestData.contactName);
+          await page.waitForTimeout(500);
+        }
+
+        // Fill Contact Phone
+        await fillAutoComplete(page, 'Contact Phone', baseTestData.contactPhone);
+
+        // Fill To Recipients
+        const toRecipientsSelectors = [
+          'input[placeholder*="Type email" i]',
+          'input[placeholder*="email" i]'
+        ];
+        let toRecipientsInput = null;
+        for (const selector of toRecipientsSelectors) {
+          toRecipientsInput = page.locator(selector).first();
+          if (await toRecipientsInput.isVisible({ timeout: 3000 }).catch(() => false)) break;
+          toRecipientsInput = null;
+        }
+        if (!toRecipientsInput) {
+          const toRecipientsLabel = page.locator('label:has-text("To Recipients")').first();
+          if (await toRecipientsLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
+            toRecipientsInput = toRecipientsLabel.locator('xpath=following::input[1]').first();
+          }
+        }
+        if (toRecipientsInput) {
+          await toRecipientsInput.scrollIntoViewIfNeeded();
+          await toRecipientsInput.click();
+          await toRecipientsInput.clear();
+          await toRecipientsInput.fill(baseTestData.contactEmail);
+          await page.waitForTimeout(300);
+          await toRecipientsInput.press('Enter');
+          await page.waitForTimeout(800);
+        }
+
+        // Optional: Fill Reference No
+        const refNoInput = page.locator('input[placeholder*="Reference number" i], input[placeholder*="Reference No"]').first();
+        if (await refNoInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await refNoInput.fill(baseTestData.referenceNo);
+        }
+
+        await page.waitForTimeout(1000);
+
+        // Find and click Submit/Create button
+        let submitButton = null;
+        const submitButtonSelectors = [
+          'button[type="submit"]:has-text("Create")',
+          'button[type="submit"]',
+          'button:has-text("Create")[type="submit"]'
+        ];
+        for (const selector of submitButtonSelectors) {
+          const buttons = page.locator(selector);
+          const count = await buttons.count();
+          for (let i = 0; i < count; i++) {
+            const btn = buttons.nth(i);
+            if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+              const text = await btn.textContent().catch(() => '');
+              const btnType = await btn.getAttribute('type').catch(() => '');
+              if ((text.includes('Create') || btnType === 'submit') && !text.includes('Contact')) {
+                submitButton = btn;
+                break;
+              }
+            }
+          }
+          if (submitButton) break;
+        }
+        if (!submitButton) {
+          submitButton = page.locator('button[type="submit"]').last();
+        }
+
+        await submitButton.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(500);
+
+        try {
+          await submitButton.click({ timeout: 5000 });
+        } catch {
+          try {
+            await submitButton.click({ force: true, timeout: 5000 });
+          } catch {
+            await submitButton.evaluate((el) => el.click());
+          }
+        }
+
+        // Wait for redirect to tickets manager
+        await page.waitForURL('http://46.62.211.210:4003/dashboard/tickets-manager', { timeout: 30000 });
+
+        // Wait for "created successfully" toast
+        await expect(page.getByText('created successfully')).toBeVisible({ timeout: 30000 });
+
+        console.log(`  ✅ [${ticketIndex + 1}/${TOTAL_TICKETS}] Ticket "${uniqueSubject}" created successfully`);
+        results.successful.push(uniqueSubject);
+      } catch (error) {
+        const subject = `Test Ticket #${ticketIndex + 1}`;
+        results.failed.push({ subject, reason: error.message });
+        console.log(`  ❌ [${ticketIndex + 1}/${TOTAL_TICKETS}] Failed: ${error.message}`);
+      } finally {
+        if (context) {
+          await context.close();
+        }
+      }
+    }
+
+    // Build batches
+    const batches = [];
+    for (let i = 0; i < TOTAL_TICKETS; i += BATCH_SIZE) {
+      batches.push(Array.from({ length: Math.min(BATCH_SIZE, TOTAL_TICKETS - i) }, (_, j) => i + j));
+    }
+
+    console.log(`\n🚀 Starting creation of ${TOTAL_TICKETS} tickets in ${batches.length} batches of ${BATCH_SIZE}...\n`);
+    const startTime = Date.now();
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      console.log(`\n📦 Batch ${batchIndex + 1}/${batches.length} (tickets ${batch[0] + 1}-${batch[batch.length - 1] + 1})...`);
+
+      await Promise.all(batch.map((ticketIndex) => createSingleTicket(browser, ticketIndex)));
+
+      // Pause between batches
+      if (batchIndex < batches.length - 1) {
+        console.log('⏳ Waiting 3 seconds before next batch...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
+    // Print summary
+    console.log('\n' + '='.repeat(60));
+    console.log('TICKET CREATION SUMMARY');
+    console.log('='.repeat(60));
+    console.log(`Total tickets attempted: ${TOTAL_TICKETS}`);
+    console.log(`Successful: ${results.successful.length}`);
+    console.log(`Failed: ${results.failed.length}`);
+    console.log(`Duration: ${duration} seconds`);
+    console.log('\nSuccessful:');
+    results.successful.forEach(s => console.log(`  ✅ ${s}`));
+    console.log('\nFailed:');
+    results.failed.forEach(({ subject, reason }) => console.log(`  ❌ ${subject} - ${reason}`));
+    console.log('='.repeat(60));
+
+    expect(results.successful.length).toBeGreaterThan(0);
   });
 });
 
