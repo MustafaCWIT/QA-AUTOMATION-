@@ -54,9 +54,9 @@ module.exports = defineConfig({
       use: { 
         ...devices['Desktop Chrome'],
         // Auth setup disabled - tests handle their own login
-        // storageState: '.auth/user.json',
+        storageState: '.auth/user.json',
       },
-      // dependencies: ['setup'], // Disabled - no longer runs auth.setup.js before tests
+      dependencies: ['setup'], // Disabled - no longer runs auth.setup.js before tests
     },
 
     // Temporarily disabled - Firefox/WebKit installation issues
