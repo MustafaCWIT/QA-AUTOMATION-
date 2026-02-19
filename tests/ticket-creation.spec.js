@@ -666,9 +666,9 @@ test.describe('Ticket Creation', () => {
       subject: 'Test Ticket - Automated Playwright Test',
       purpose: 'General - Customer Service', // Change to match your actual purpose options (e.g., "General - Customer Service", "Meter Reading Dispute - Customer Service")
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'Reads', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
+      assignTo: 'EHU', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
       source: 'Email', // Change to match your actual source options
-      status: 'Assigned', // Change to match your actual status options
+      status: 'On Hold', // Change to match your actual status options
       priority: 'Medium', // Change to match your actual priority options (Low, Medium, High, etc.)
       slaType: 'Higher', // Change to match your actual SLA options
       contactName: 'Test Contact',
@@ -1131,9 +1131,9 @@ test.describe('Ticket Creation', () => {
     const baseTestData = {
       purpose: 'General - Customer Service',
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'Reads',
+      assignTo: 'EHU',
       source: 'Email',
-      status: 'Assigned',
+      status: 'On Hold',
       priority: 'Medium',
       slaType: 'Higher',
       contactName: 'Test Contact',
