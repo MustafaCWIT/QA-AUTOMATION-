@@ -2,10 +2,29 @@ const { test, expect } = require('@playwright/test');
 const { TasksManagerPage } = require('../pages/TasksManagerPage');
 
 /**
- * Playwright test for creating a task with all fields across three tabs:
- * - Details: Title, Description, Owner Type, Owner, Task Type, Status, Priority, Dates
- * - Checklist: Add checklist items with Mandatory/Attachment flags
- * - Assignee(s): Add assignees with type and name
+ * Playwright test for creating a task.
+ *
+ * Form structure (from actual HTML):
+ *
+ * TABS: Details | Checklist | Assignee(s) | Checklist Assignees
+ *
+ * DETAILS TAB:
+ *   - Title: input[placeholder="Title"] (required - Create Task disabled without it)
+ *   - Milestone: checkbox (aria-label="Milestone")
+ *   - Template: combobox (role="combobox")
+ *   - Description: TipTap ProseMirror editor (data-placeholder="Enter task description...")
+ *   - Attachment: button[data-id="Add attachment"] + hidden file input
+ *   - Priority: radio pills (name="task_priority") - Normal | Low | Medium | High | Critical
+ *   - Status: radio pills (name="task_status_by_dept") - To-Do | In Progress | Review
+ *   - Owner Type: combobox (label "Owner Type") - defaults to "User"
+ *   - Owner: combobox (label "Owner") - defaults to "super admin"
+ *   - Task Type: combobox (label "Task Type") - required, defaults to "Technical - Ticket"
+ *   - Start Date: input[type="datetime-local"] (auto-populated with current time)
+ *   - Due Date: input[type="datetime-local"] (required)
+ *   - Reminder (Hours): input[type="number"] (defaults to 1)
+ *   - Estimated Hours: input[type="number"]
+ *
+ * BOTTOM BUTTONS: Close | Reset | Create Task (disabled until Title filled)
  */
 
 // ============================================================
@@ -16,16 +35,21 @@ async function selectComboboxOption(page, label, optionText, timeout = 10000) {
     console.log(`Attempting to select "${optionText}" for "${label}"`);
 
     // --- Find the combobox trigger button near the label ---
+    // Use exact text matching to avoid "Owner" matching "Owner Type"
     let comboboxTrigger = null;
-    const labelElement = page.locator(`label:has-text("${label}")`).first();
+
+    // Try finding by label element first
+    const labelElement = page.locator('label').filter({ hasText: new RegExp(`^${label}\\s*\\*?\\s*$`) }).first();
     const labelVisible = await labelElement.isVisible({ timeout: 3000 }).catch(() => false);
 
     if (labelVisible) {
-      // Approach 1: Following sibling with combobox role
-      comboboxTrigger = labelElement.locator('xpath=following-sibling::*//button[@role="combobox"]').first();
+      // Approach 1: Sibling combobox in same parent container
+      const parentDiv = labelElement.locator('..');
+      comboboxTrigger = parentDiv.locator('button[role="combobox"]').first();
+
       if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
-        // Approach 2: Parent container
-        comboboxTrigger = labelElement.locator('..').locator('button[role="combobox"]').first();
+        // Approach 2: Following sibling
+        comboboxTrigger = labelElement.locator('xpath=following-sibling::button[@role="combobox"]').first();
       }
       if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
         // Approach 3: Any following combobox
@@ -33,12 +57,7 @@ async function selectComboboxOption(page, label, optionText, timeout = 10000) {
       }
     }
 
-    // Fallback: Find by placeholder text in trigger
     if (!comboboxTrigger || !(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
-      comboboxTrigger = page.locator(`button[role="combobox"]:has-text("Select")`).first();
-    }
-
-    if (!comboboxTrigger) {
       throw new Error(`Could not find combobox trigger for "${label}"`);
     }
 
@@ -53,7 +72,7 @@ async function selectComboboxOption(page, label, optionText, timeout = 10000) {
       await page.waitForTimeout(500);
     }
 
-    // --- Wait for popover to appear ---
+    // --- Wait for popover/dialog to appear ---
     const popoverSelectors = [
       '[role="dialog"]',
       '[role="listbox"]',
@@ -112,15 +131,25 @@ async function selectComboboxOption(page, label, optionText, timeout = 10000) {
 }
 
 // ============================================================
+// HELPER: Select a radio pill option (Priority / Status)
+// Radio inputs are sr-only, wrapped in styled <label> pills
+// ============================================================
+async function selectRadioPill(page, radioName, optionText) {
+  // The radio inputs use name="task_priority" or name="task_status_by_dept"
+  // They are sr-only inside <label> elements styled as pills
+  // Click the label containing the option text
+  const label = page.locator(`label:has(input[name="${radioName}"])`).filter({ hasText: optionText }).first();
+  await expect(label).toBeVisible({ timeout: 5000 });
+  await label.click();
+  await page.waitForTimeout(300);
+  console.log(`✅ Selected "${optionText}" for ${radioName}`);
+}
+
+// ============================================================
 // HELPER: Fill TipTap / ProseMirror rich text editor
 // ============================================================
 async function fillDescription(page, content) {
-  // Try TipTap ProseMirror editor first
-  let editor = page.locator('.ProseMirror, [contenteditable="true"]').first();
-  if (!(await editor.isVisible({ timeout: 3000 }).catch(() => false))) {
-    // Fallback to textarea
-    editor = page.locator('textarea[data-field="description"]').first();
-  }
+  const editor = page.locator('div[data-field="description"] .ProseMirror').first();
   await expect(editor).toBeVisible({ timeout: 10000 });
   await editor.click();
   await editor.press('Control+a');
@@ -128,40 +157,6 @@ async function fillDescription(page, content) {
   await editor.type(content, { delay: 30 });
   await page.waitForTimeout(500);
   console.log('✅ Description filled');
-}
-
-// ============================================================
-// HELPER: Fill a date input (DateTime component)
-// ============================================================
-async function fillDateInput(page, label, dateValue) {
-  try {
-    // Find input near the label
-    const labelElement = page.locator(`label:has-text("${label}")`).first();
-    let dateInput = null;
-
-    if (await labelElement.isVisible({ timeout: 3000 }).catch(() => false)) {
-      dateInput = labelElement.locator('xpath=following::input[1]').first();
-    }
-
-    // Fallback: try placeholder
-    if (!dateInput || !(await dateInput.isVisible({ timeout: 2000 }).catch(() => false))) {
-      dateInput = page.locator(`input[placeholder*="${label}" i], input[placeholder="Select date..."]`).first();
-    }
-
-    if (dateInput && await dateInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await dateInput.scrollIntoViewIfNeeded();
-      await dateInput.click();
-      await page.waitForTimeout(300);
-      await dateInput.fill(dateValue);
-      await page.keyboard.press('Enter');
-      await page.waitForTimeout(500);
-      console.log(`✅ Filled "${label}" with "${dateValue}"`);
-    } else {
-      console.log(`⚠️ Date input "${label}" not found, skipping`);
-    }
-  } catch (error) {
-    console.log(`⚠️ Could not fill date "${label}": ${error.message}`);
-  }
 }
 
 // ============================================================
@@ -189,96 +184,107 @@ test.describe('Task Creation', () => {
     const taskData = {
       title: 'E2E Test Task - Automated Playwright Test',
       description: 'This task was created by an automated Playwright test. Please review and process accordingly.',
-      ownerType: 'User',
-      owner: 'EHU',                // Change to match an actual user in your system
-      taskType: 'General',         // Change to match your task type options
-      status: 'Open',              // Change to match your status options
-      priority: 'High',            // Change to match your priority options
-      startDate: '2026-03-01',     // Adjust format to match your DateTime component
-      dueDate: '2026-03-15',
+      ownerType: 'User',                     // Combobox - defaults to "User"
+      owner: 'EHU',                           // Combobox - search for user
+      taskType: 'Technical - Ticket',         // Combobox - defaults to this
+      priority: 'High',                       // Radio pill: Normal | Low | Medium | High | Critical
+      status: 'In Progress',                  // Radio pill: To-Do | In Progress | Review
+      dueDate: '2026-03-15T17:00',            // datetime-local format (required)
+      reminderHours: '2',
+      estimatedHours: '8',
       // Checklist
       checklistItem: 'Verify all user inputs are validated',
       checklistMandatory: true,
       checklistAttachment: false,
       // Assignee
       assigneeType: 'User',
-      assigneeName: 'EHU',        // Change to match an actual user
+      assigneeName: 'EHU',
     };
 
     // =============================================
     // 1. DETAILS TAB (default active tab)
     // =============================================
     await test.step('Fill Task Details', async () => {
-      // Title
+      // Title (required - enables the Create Task button)
       const titleInput = page.locator('input[placeholder="Title"]').first();
       await titleInput.fill(taskData.title);
       console.log(`✅ Title: "${taskData.title}"`);
 
-      // Description (TipTap editor)
+      // Description (TipTap ProseMirror editor)
       await fillDescription(page, taskData.description);
 
-      // Owner Type (Combobox)
-      await selectComboboxOption(page, 'Owner Type', taskData.ownerType);
+      // Priority (radio pills - name="task_priority")
+      // Options: Normal (default) | Low | Medium | High | Critical
+      await selectRadioPill(page, 'task_priority', taskData.priority);
 
-      // Owner (Combobox - options load based on Owner Type)
+      // Status (radio pills - name="task_status_by_dept")
+      // Options: To-Do (default) | In Progress | Review
+      await selectRadioPill(page, 'task_status_by_dept', taskData.status);
+
+      // Owner Type (combobox - already defaults to "User")
+      // Only change if different from default
+      if (taskData.ownerType !== 'User') {
+        await selectComboboxOption(page, 'Owner Type', taskData.ownerType);
+      } else {
+        console.log('✅ Owner Type already set to "User" (default)');
+      }
+
+      // Owner (combobox - search and select)
       await selectComboboxOption(page, 'Owner', taskData.owner);
 
-      // Task Type (Combobox)
-      await selectComboboxOption(page, 'Task Type', taskData.taskType);
-
-      // Status (Combobox or Radio)
-      const statusRadio = page.locator(`label:has-text("${taskData.status}") input[type="radio"]`).first();
-      if (await statusRadio.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await statusRadio.check();
-        console.log(`✅ Status (radio): "${taskData.status}"`);
+      // Task Type (combobox - already defaults to "Technical - Ticket")
+      if (taskData.taskType !== 'Technical - Ticket') {
+        await selectComboboxOption(page, 'Task Type', taskData.taskType);
       } else {
-        await selectComboboxOption(page, 'Status', taskData.status);
+        console.log('✅ Task Type already set to "Technical - Ticket" (default)');
       }
 
-      // Priority (Combobox or Radio)
-      const priorityRadio = page.locator(`label:has-text("${taskData.priority}") input[type="radio"]`).first();
-      if (await priorityRadio.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await priorityRadio.check();
-        console.log(`✅ Priority (radio): "${taskData.priority}"`);
-      } else {
-        await selectComboboxOption(page, 'Priority', taskData.priority);
+      // Due Date (required - input[type="datetime-local"])
+      const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
+      await expect(dueDateInput).toBeVisible({ timeout: 5000 });
+      await dueDateInput.fill(taskData.dueDate);
+      console.log(`✅ Due Date: "${taskData.dueDate}"`);
+
+      // Reminder Hours (optional - defaults to 1)
+      if (taskData.reminderHours) {
+        const reminderInput = page.locator('input[placeholder="0 to disable"]').first();
+        if (await reminderInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await reminderInput.fill(taskData.reminderHours);
+          console.log(`✅ Reminder: ${taskData.reminderHours} hours`);
+        }
       }
 
-      // Start Date
-      await fillDateInput(page, 'Start Date', taskData.startDate);
-
-      // Due Date
-      await fillDateInput(page, 'Due Date', taskData.dueDate);
+      // Estimated Hours (optional)
+      if (taskData.estimatedHours) {
+        const estimatedInput = page.locator('input[placeholder="Enter hours"]').first();
+        if (await estimatedInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await estimatedInput.fill(taskData.estimatedHours);
+          console.log(`✅ Estimated Hours: ${taskData.estimatedHours}`);
+        }
+      }
     });
 
     // =============================================
     // 2. CHECKLIST TAB
     // =============================================
     await test.step('Add Checklist Items', async () => {
-      // Switch to Checklist tab
       await page.locator('button[data-id="Checklist"]').click();
       await page.waitForTimeout(500);
 
-      // Fill checklist item text
       const checklistInput = page.getByPlaceholder('Add new checklist item');
       await expect(checklistInput).toBeVisible({ timeout: 5000 });
       await checklistInput.fill(taskData.checklistItem);
 
-      // Toggle Mandatory checkbox
       if (taskData.checklistMandatory) {
         await page.getByLabel('Mandatory').check();
       }
-
-      // Toggle Attachment checkbox
       if (taskData.checklistAttachment) {
         await page.getByLabel('Attachment').check();
       }
 
-      // Click Add button
       await page.locator('button[data-id="Add"]').click();
       await page.waitForTimeout(500);
 
-      // Verify the item was added
       await expect(page.getByText(taskData.checklistItem)).toBeVisible({ timeout: 5000 });
       console.log(`✅ Checklist item added: "${taskData.checklistItem}"`);
     });
@@ -287,7 +293,6 @@ test.describe('Task Creation', () => {
     // 3. ASSIGNEE(S) TAB
     // =============================================
     await test.step('Add Assignees', async () => {
-      // Switch to Assignee(s) tab
       await page.locator('button[data-id="Assignee(s)"]').click();
       await page.waitForTimeout(500);
 
@@ -322,13 +327,11 @@ test.describe('Task Creation', () => {
       await createTaskBtn.scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
 
-      // Verify button is enabled before clicking
+      // Verify button is enabled (Title must be filled)
       await expect(createTaskBtn).toBeEnabled({ timeout: 5000 });
 
-      // Take screenshot before submission
       await page.screenshot({ path: 'task-form-before-submit.png', fullPage: true });
 
-      // Click Create Task
       await createTaskBtn.click();
       console.log('Clicked Create Task button, waiting for success...');
 
@@ -338,18 +341,20 @@ test.describe('Task Creation', () => {
     });
   });
 
-  test('should create a task with only required fields (Details tab)', async ({ page }) => {
+  test('should create a task with only required fields', async ({ page }) => {
     test.setTimeout(90000);
 
     await test.step('Fill minimum required fields', async () => {
-      // Title (always required)
+      // Title (required - enables Create Task button)
       await page.locator('input[placeholder="Title"]').first().fill('Minimal Task - Required Fields Only');
 
-      // Owner Type
-      await selectComboboxOption(page, 'Owner Type', 'User');
+      // Due Date (required - datetime-local)
+      const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
+      await dueDateInput.fill('2026-03-15T17:00');
 
-      // Owner
-      await selectComboboxOption(page, 'Owner', 'EHU');
+      // Priority defaults to "Normal", Status defaults to "To-Do"
+      // Owner Type defaults to "User", Task Type defaults to "Technical - Ticket"
+      // These defaults should be enough to submit
     });
 
     await test.step('Submit Task', async () => {
@@ -358,30 +363,33 @@ test.describe('Task Creation', () => {
       await expect(createTaskBtn).toBeEnabled({ timeout: 5000 });
       await createTaskBtn.click();
 
-      // Verify success
       await expect(page.getByText(/Created Task/i)).toBeVisible({ timeout: 30000 });
       console.log('✅ Minimal task created successfully!');
     });
   });
 
   test('should validate that Title is required', async ({ page }) => {
-    // Try to submit without filling the Title
+    // Create Task button should be disabled when Title is empty
+    // (HTML shows: disabled="" title="Title is required")
     const createTaskBtn = page.locator('button[data-id="Create Task"]').first();
+    await expect(createTaskBtn).toBeVisible({ timeout: 5000 });
+    await expect(createTaskBtn).toBeDisabled();
+    console.log('✅ Create Task button is disabled when Title is empty');
 
-    if (await createTaskBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      const isDisabled = await createTaskBtn.isDisabled();
-      if (isDisabled) {
-        console.log('✅ Create button is disabled when Title is empty - validation working');
-      } else {
-        // Click and check for error messages
-        await createTaskBtn.click();
-        await page.waitForTimeout(1000);
+    // Verify the tooltip/title attribute
+    await expect(createTaskBtn).toHaveAttribute('title', 'Title is required');
+    console.log('✅ Button shows "Title is required" tooltip');
 
-        const errorMessages = page.locator('.text-red-600, .text-red-500, [class*="error"]');
-        const errorCount = await errorMessages.count();
-        expect(errorCount).toBeGreaterThan(0);
-        console.log(`✅ Found ${errorCount} validation error(s) when Title is empty`);
-      }
-    }
+    // Fill Title and verify button becomes enabled
+    await page.locator('input[placeholder="Title"]').first().fill('Test Title');
+    await page.waitForTimeout(500);
+
+    // Due Date is also required, fill it
+    const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
+    await dueDateInput.fill('2026-03-15T17:00');
+    await page.waitForTimeout(500);
+
+    await expect(createTaskBtn).toBeEnabled({ timeout: 5000 });
+    console.log('✅ Create Task button becomes enabled after filling Title + Due Date');
   });
 });
