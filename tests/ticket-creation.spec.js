@@ -1121,10 +1121,10 @@ test.describe('Ticket Creation', () => {
     }
   });
 
-  test('should create 50 tickets simultaneously', async ({ browser }) => {
+  test('should create 1000 tickets simultaneously', async ({ browser }) => {
     test.setTimeout(3600000); // 60 minutes
 
-    const TOTAL_TICKETS = 50;
+    const TOTAL_TICKETS = 1000;
     const BATCH_SIZE = 5;
     const results = { successful: [], failed: [] };
 
