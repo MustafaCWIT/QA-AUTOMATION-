@@ -296,23 +296,38 @@ test.describe('Task Creation', () => {
       await page.locator('button[data-id="Assignee(s)"]').click();
       await page.waitForTimeout(500);
 
-      // Open the "Add New Assignee" sub-form
-      const addAssigneeBtn = page.locator('button:has-text("Add New Assignee"), button[data-id="Add New Assignee"]').first();
-      if (await addAssigneeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await addAssigneeBtn.click();
-        await page.waitForTimeout(500);
-      }
+      // The assignee form has a grid with:
+      //   col-span-1: Type combobox (defaults to "User")
+      //   col-span-3: "Search assignee..." combobox
+      //   col-span-1: Delegate checkbox + Add button
 
-      // Select Assignee Type
-      await selectComboboxOption(page, 'Assignee Type', taskData.assigneeType);
+      // 1. Click the "Search assignee..." combobox to open the dropdown
+      const searchAssigneeCombobox = page.locator('button[role="combobox"]:has-text("Search assignee")').first();
+      await expect(searchAssigneeCombobox).toBeVisible({ timeout: 5000 });
+      await searchAssigneeCombobox.click();
+      await page.waitForTimeout(500);
 
-      // Select Assignee Name
-      await selectComboboxOption(page, 'Assignee', taskData.assigneeName);
+      // 2. Type the assignee name in the search input inside the popover
+      const searchInput = page.locator(
+        '[role="dialog"] input, [data-radix-popper-content-wrapper] input'
+      ).first();
+      await expect(searchInput).toBeVisible({ timeout: 5000 });
+      await searchInput.fill(taskData.assigneeName);
+      await page.waitForTimeout(1500); // Wait for search results to load
 
-      // Save the assignee
-      const saveAssigneeBtn = page.locator('button[data-id="Create New Assignee"]').first();
-      await expect(saveAssigneeBtn).toBeVisible({ timeout: 5000 });
-      await saveAssigneeBtn.click();
+      // 3. Select the matching assignee from the dropdown results
+      const assigneeOption = page.locator(`[role="option"]`).filter({ hasText: taskData.assigneeName }).first();
+      await expect(assigneeOption).toBeVisible({ timeout: 10000 });
+      await assigneeOption.click();
+      await page.waitForTimeout(500);
+
+      console.log(`✅ Selected assignee: ${taskData.assigneeName}`);
+
+      // 4. Click the "Add" button to add the assignee to the task
+      const addBtn = page.locator('button[data-id="Add Assignee"]').first();
+      await expect(addBtn).toBeVisible({ timeout: 5000 });
+      await expect(addBtn).toBeEnabled({ timeout: 5000 });
+      await addBtn.click();
       await page.waitForTimeout(800);
 
       console.log(`✅ Assignee added: ${taskData.assigneeType} - ${taskData.assigneeName}`);
