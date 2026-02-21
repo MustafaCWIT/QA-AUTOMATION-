@@ -626,32 +626,37 @@ async function fillAutoComplete(
 }
 
 test.describe('Ticket Creation', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    // Skip beforeEach for the 1000-ticket test — it creates its own browser contexts
+    if (testInfo.title.includes('1000')) {
+      return;
+    }
+
     // Navigate to the tickets manager page
     const ticketsManagerPage = new TicketsManagerPage(page);
     await ticketsManagerPage.goto();
-    
+
     // Verify we're on the tickets manager page
     await ticketsManagerPage.verifyTicketsManagerPage();
-    
+
     // Click + Ticket button in top right corner to open ticket creation form
     await ticketsManagerPage.clickAddTicket();
-    
+
     // Wait for ticket creation form to appear
     await ticketsManagerPage.waitForTicketForm();
-    
+
     // Verify ticket creation form is open
     await ticketsManagerPage.verifyTicketFormOpen();
-    
+
     // Click the "Create" button to view the ticket creation form
     // This button has data-id="Create" and contains the text "Create"
     const createButton = page.locator('button[data-id="Create"]').first();
     await expect(createButton).toBeVisible({ timeout: 10000 });
     await createButton.click();
-    
+
     // Wait for the form to fully load after clicking Create
     await page.waitForTimeout(1000);
-    
+
     // Verify the form is visible by checking for Subject input
     const subjectInput = page.locator('input[placeholder*="Subject" i], input[placeholder*="Enter Subject"]').first();
     await expect(subjectInput).toBeVisible({ timeout: 15000 });
@@ -666,9 +671,9 @@ test.describe('Ticket Creation', () => {
       subject: 'Test Ticket - Automated Playwright Test',
       purpose: 'General - Customer Service', // Change to match your actual purpose options (e.g., "General - Customer Service", "Meter Reading Dispute - Customer Service")
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'EHU', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
+      assignTo: 'CoO', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
       source: 'Email', // Change to match your actual source options
-      status: 'On Hold', // Change to match your actual status options
+      status: 'Closed', // Change to match your actual status options
       priority: 'Medium', // Change to match your actual priority options (Low, Medium, High, etc.)
       slaType: 'Higher', // Change to match your actual SLA options
       contactName: 'Test Contact',
@@ -1121,19 +1126,19 @@ test.describe('Ticket Creation', () => {
     }
   });
 
-  test('should create 250 tickets simultaneously', async ({ browser }) => {
+  test('should create 1000 tickets simultaneously', async ({ browser }) => {
     test.setTimeout(3600000); // 60 minutes
 
-    const TOTAL_TICKETS = 250;
+    const TOTAL_TICKETS = 1000;
     const BATCH_SIZE = 5;
     const results = { successful: [], failed: [] };
 
     const baseTestData = {
       purpose: 'General - Customer Service',
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'EHU',
+      assignTo: 'CoO',
       source: 'Email',
-      status: 'On Hold',
+      status: 'Closed',
       priority: 'Medium',
       slaType: 'Higher',
       contactName: 'Test Contact',
@@ -1147,14 +1152,14 @@ test.describe('Ticket Creation', () => {
       try {
         console.log(`[${ticketIndex + 1}/${TOTAL_TICKETS}] Starting ticket creation...`);
 
-        // Create a new browser context with saved auth state
+        // Create a new browser context with saved auth state and video recording
         context = await browser.newContext({
           baseURL: 'http://46.62.211.210:4003',
           storageState: '.auth/user.json',
           recordVideo: {
             dir: 'test-results/videos/',
             size: { width: 1280, height: 720 }
-          }
+          },
         });
         const page = await context.newPage();
 
