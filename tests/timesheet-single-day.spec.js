@@ -42,6 +42,8 @@ test.describe('Single Day Timesheet', () => {
     // Navigate back through weeks until we find one with an available day
     const dialog = page.locator('[role="dialog"]');
     const MAX_WEEKS_BACK = 5;
+    let weeksNavigatedBack = 0;
+    let chosenDayName = ''; // e.g. "Mon", "Tue", "Sat"
 
     for (let week = 0; week < MAX_WEEKS_BACK; week++) {
       // Day buttons that already have a timesheet show a checkmark (svg inside).
@@ -52,10 +54,14 @@ test.describe('Single Day Timesheet', () => {
 
       const count = await availableDays.count();
       if (count > 0) {
-        const selectedDay = await availableDays.first().textContent();
-        console.log(`  Found ${count} available day(s). Selecting: ${selectedDay.trim()}`);
-        await availableDays.first().click();
+        // Extract the short day name from the button (first child div text)
+        const dayBtn = availableDays.first();
+        chosenDayName = await dayBtn.locator('div').first().textContent();
+        chosenDayName = chosenDayName.trim(); // "Mon", "Tue", etc.
+        console.log(`  Found ${count} available day(s). Selecting: ${chosenDayName}`);
+        await dayBtn.click();
         await page.waitForTimeout(500);
+        weeksNavigatedBack = week;
         break;
       }
 
@@ -73,19 +79,36 @@ test.describe('Single Day Timesheet', () => {
     await submitBtn.scrollIntoViewIfNeeded();
     await expect(submitBtn).toBeEnabled({ timeout: 10000 });
     await page.waitForTimeout(500);
-    // Button is type="submit" inside a form — use dispatch instead of plain click
     await submitBtn.dispatchEvent('click');
     await page.waitForTimeout(1000);
-    // If form submit didn't close the dialog, try a force click as fallback
+    // Fallback: if dialog is still open, force click
     const dialogStillOpen = await page.locator('[role="dialog"]').isVisible({ timeout: 2000 }).catch(() => false);
     if (dialogStillOpen) {
       await submitBtn.click({ force: true });
     }
-    console.log('  Timesheet created.');
+    console.log(`  Timesheet created for ${chosenDayName}.`);
 
-    // Wait for modal to close and timesheet to load
+    // Wait for modal to close and page to reload
     await page.waitForSelector('[role="dialog"]', { state: 'hidden', timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(3000);
+
+    // ── Step 2b: Navigate to the correct week and select the created day ──
+    // The main page resets to the current week, so go back the same number of weeks
+    if (weeksNavigatedBack > 0) {
+      console.log(`  Navigating back ${weeksNavigatedBack} week(s) on the main page...`);
+      for (let i = 0; i < weeksNavigatedBack; i++) {
+        await timesheetPage.navigateToPreviousWeek();
+        await page.waitForTimeout(1000);
+      }
+      await page.waitForTimeout(1000);
+    }
+
+    // Click the day tab that matches the created day (e.g. "Mon", "Sat")
+    console.log(`  Selecting day tab: ${chosenDayName}`);
+    const dayTab = page.locator(`div[role="button"]:has(h3:text-is("${chosenDayName}"))`).first();
+    await expect(dayTab).toBeVisible({ timeout: 10000 });
+    await dayTab.click();
+    await page.waitForTimeout(2000);
 
     // Verify Add Activity button is now enabled
     await expect(page.locator(timesheetPage.addActivityButton).first()).toBeEnabled({ timeout: 15000 });
