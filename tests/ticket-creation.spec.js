@@ -1146,8 +1146,9 @@ test.describe('Ticket Creation', () => {
     const BATCH_SIZE = 5;
     const results = { successful: [], failed: [] };
 
+    // Match format of "should create a ticket with all required fields"
     const baseTestData = {
-      department: 'Customer Service',
+      department: 'Reads',
       purpose: 'Customer Service',
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
       assignTo: 'CoO',
@@ -1223,7 +1224,7 @@ test.describe('Ticket Creation', () => {
         // Fill Priority
         await selectComboboxOption(page, 'Priority', baseTestData.priority);
 
-        // Fill SLA if tab exists
+        // Navigate to SLA tab if needed (matches single-ticket test)
         const slaTab = page.locator('button:has-text("SLA")').first();
         if (await slaTab.isVisible({ timeout: 2000 }).catch(() => false)) {
           await slaTab.click();
@@ -1245,7 +1246,7 @@ test.describe('Ticket Creation', () => {
           }
         }
 
-        // Navigate to Contact Info tab
+        // Navigate to Contact Info tab (matches single-ticket test)
         const contactTabSelectors = [
           'button:has-text("Contact Info"):has(svg.lucide-user)',
           'button:has-text("Contact Info")',
@@ -1260,24 +1261,36 @@ test.describe('Ticket Creation', () => {
           contactTab = null;
         }
 
-        if (contactTab) {
-          const isActive = await contactTab.evaluate((el) => {
-            const classes = el.className || '';
-            return classes.includes('bg-[#4540a6]') || el.getAttribute('aria-selected') === 'true';
-          }).catch(() => false);
+        if (!contactTab) {
+          throw new Error('Contact Info tab not found');
+        }
 
-          if (!isActive) {
-            await contactTab.click();
-            await page.waitForTimeout(500);
-          }
+        await expect(contactTab).toBeVisible({ timeout: 5000 });
+
+        const isActive = await contactTab.evaluate((el) => {
+          const classes = el.className || '';
+          const bgColor = window.getComputedStyle(el).backgroundColor;
+          const borderColor = window.getComputedStyle(el).borderBottomColor;
+          return classes.includes('bg-[#4540a6]') ||
+            classes.includes('bg-blue') ||
+            el.getAttribute('aria-selected') === 'true' ||
+            bgColor.includes('70') ||
+            borderColor.includes('70');
+        }).catch(() => false);
+
+        if (!isActive) {
+          await contactTab.click();
+          await page.waitForTimeout(500);
         }
 
         await page.waitForTimeout(1500);
 
-        // Fill Contact Name
+        // Fill Contact Name (matches single-ticket test)
         const contactNameSelectors = [
           'input[placeholder*="Contact name" i]',
-          'input[placeholder*="Contact Name" i]'
+          'input[placeholder*="Contact Name" i]',
+          'label:has-text("Contact Name") + * input',
+          'label:has-text("Contact Name") ~ * input'
         ];
         let contactNameInput = null;
         for (const selector of contactNameSelectors) {
@@ -1288,23 +1301,38 @@ test.describe('Ticket Creation', () => {
         if (!contactNameInput) {
           const contactNameLabel = page.locator('label:has-text("Contact Name")').first();
           if (await contactNameLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
-            contactNameInput = contactNameLabel.locator('xpath=following::input[1]').first();
+            const labelParent = contactNameLabel.locator('..');
+            contactNameInput = labelParent.locator('input').first();
+            if (!(await contactNameInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+              contactNameInput = contactNameLabel.locator('xpath=following::input[1]').first();
+            }
           }
         }
-        if (contactNameInput) {
-          await contactNameInput.scrollIntoViewIfNeeded();
-          await contactNameInput.click();
+
+        await expect(contactNameInput).toBeVisible({ timeout: 10000 });
+        await contactNameInput.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await contactNameInput.click();
+        await page.waitForTimeout(200);
+        await contactNameInput.fill(baseTestData.contactName);
+        await page.waitForTimeout(500);
+
+        const contactNameValue = await contactNameInput.inputValue();
+        if (contactNameValue !== baseTestData.contactName) {
+          await contactNameInput.clear();
           await contactNameInput.fill(baseTestData.contactName);
-          await page.waitForTimeout(500);
+          await page.waitForTimeout(300);
         }
 
         // Fill Contact Phone
         await fillAutoComplete(page, 'Contact Phone', baseTestData.contactPhone);
 
-        // Fill To Recipients
+        // Fill To Recipients (matches single-ticket test)
         const toRecipientsSelectors = [
           'input[placeholder*="Type email" i]',
-          'input[placeholder*="email" i]'
+          'input[placeholder*="email" i]',
+          'label:has-text("To Recipients") + * input',
+          'label:has-text("To Recipients") ~ * input'
         ];
         let toRecipientsInput = null;
         for (const selector of toRecipientsSelectors) {
@@ -1315,18 +1343,33 @@ test.describe('Ticket Creation', () => {
         if (!toRecipientsInput) {
           const toRecipientsLabel = page.locator('label:has-text("To Recipients")').first();
           if (await toRecipientsLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
-            toRecipientsInput = toRecipientsLabel.locator('xpath=following::input[1]').first();
+            const labelParent = toRecipientsLabel.locator('..');
+            toRecipientsInput = labelParent.locator('input').first();
+            if (!(await toRecipientsInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+              toRecipientsInput = toRecipientsLabel.locator('xpath=following::input[1]').first();
+            }
           }
         }
-        if (toRecipientsInput) {
-          await toRecipientsInput.scrollIntoViewIfNeeded();
-          await toRecipientsInput.click();
+
+        await expect(toRecipientsInput).toBeVisible({ timeout: 10000 });
+        await toRecipientsInput.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await toRecipientsInput.click();
+        await page.waitForTimeout(200);
+        await toRecipientsInput.clear();
+        await page.waitForTimeout(200);
+        await toRecipientsInput.fill(baseTestData.contactEmail);
+        await page.waitForTimeout(300);
+
+        const emailValueBeforeEnter = await toRecipientsInput.inputValue().catch(() => '');
+        if (!emailValueBeforeEnter || !emailValueBeforeEnter.includes(baseTestData.contactEmail)) {
           await toRecipientsInput.clear();
           await toRecipientsInput.fill(baseTestData.contactEmail);
           await page.waitForTimeout(300);
-          await toRecipientsInput.press('Enter');
-          await page.waitForTimeout(800);
         }
+
+        await toRecipientsInput.press('Enter');
+        await page.waitForTimeout(800);
 
         // Optional: Fill Reference No
         const refNoInput = page.locator('input[placeholder*="Reference number" i], input[placeholder*="Reference No"]').first();
@@ -1336,13 +1379,16 @@ test.describe('Ticket Creation', () => {
 
         await page.waitForTimeout(1000);
 
-        // Find and click Submit/Create button
+        // Find Create button (matches single-ticket test strategies)
         let submitButton = null;
         const submitButtonSelectors = [
           'button[type="submit"]:has-text("Create")',
           'button[type="submit"]',
-          'button:has-text("Create")[type="submit"]'
+          'button:has-text("Create")[type="submit"]',
+          'button:has-text("Create")',
+          'button:has-text("Create Ticket")'
         ];
+
         for (const selector of submitButtonSelectors) {
           const buttons = page.locator(selector);
           const count = await buttons.count();
@@ -1351,7 +1397,9 @@ test.describe('Ticket Creation', () => {
             if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
               const text = await btn.textContent().catch(() => '');
               const btnType = await btn.getAttribute('type').catch(() => '');
-              if ((text.includes('Create') || btnType === 'submit') && !text.includes('Contact')) {
+              if ((text.includes('Create') || btnType === 'submit') &&
+                  !text.includes('Contact') &&
+                  (!text.includes('Ticket') || text.trim() === 'Create')) {
                 submitButton = btn;
                 break;
               }
@@ -1359,10 +1407,29 @@ test.describe('Ticket Creation', () => {
           }
           if (submitButton) break;
         }
+
+        if (!submitButton) {
+          const allButtons = page.locator('button');
+          const buttonCount = await allButtons.count();
+          for (let i = 0; i < buttonCount; i++) {
+            const btn = allButtons.nth(i);
+            if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+              const text = await btn.textContent().catch(() => '');
+              const classes = await btn.getAttribute('class').catch(() => '');
+              const bgColor = await btn.evaluate((el) => window.getComputedStyle(el).backgroundColor).catch(() => '');
+              if (text.includes('Create') && (classes.includes('#4540a6') || bgColor.includes('70'))) {
+                submitButton = btn;
+                break;
+              }
+            }
+          }
+        }
+
         if (!submitButton) {
           submitButton = page.locator('button[type="submit"]').last();
         }
 
+        await expect(submitButton).toBeVisible({ timeout: 10000 });
         await submitButton.scrollIntoViewIfNeeded();
         await page.waitForTimeout(500);
 
@@ -1376,10 +1443,7 @@ test.describe('Ticket Creation', () => {
           }
         }
 
-        // Wait for redirect to tickets manager
         await page.waitForURL('http://46.62.211.210:4003/dashboard/tickets-manager', { timeout: 30000 });
-
-        // Wait for "created successfully" toast
         await expect(page.getByText('created successfully')).toBeVisible({ timeout: 30000 });
 
         console.log(`  ✅ [${ticketIndex + 1}/${TOTAL_TICKETS}] Ticket "${uniqueSubject}" created successfully`);
