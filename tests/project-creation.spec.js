@@ -121,6 +121,17 @@ async function fillDescription(page, content) {
 }
 
 // ============================================================
+// HELPER: Select radio pill (for Task form - Priority / Status)
+// ============================================================
+async function selectRadioPill(page, radioName, optionText) {
+  const label = page.locator(`label:has(input[name="${radioName}"])`).filter({ hasText: optionText }).first();
+  await expect(label).toBeVisible({ timeout: 5000 });
+  await label.click();
+  await page.waitForTimeout(300);
+  console.log(`✅ Selected "${optionText}" for ${radioName}`);
+}
+
+// ============================================================
 // TEST SUITE
 // ============================================================
 test.describe('Project Creation', () => {
@@ -142,7 +153,7 @@ test.describe('Project Creation', () => {
       title: 'E2E Test Project - Automated Playwright Test',
       description: 'This project was created by an automated Playwright test.',
       ownerType: 'User',
-      owner: 'Reads',
+      owner: 'EHU',
       startDate: '2026-03-06T06:00',
       dueDate: '2026-03-15T17:00',
       estimatedHours: '40',
@@ -255,7 +266,19 @@ test.describe('Project Creation', () => {
 
       await createProjectBtn.click();
       console.log('✅ Clicked Create Project button');
+
+      // Confirmation modal: "Proceed without all Project details?" — click "Create anyway"
+      const createAnywayBtn = page.locator('button:has-text("Create anyway")').first();
+      if (await createAnywayBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await createAnywayBtn.click();
+        console.log('✅ Clicked "Create anyway" in confirmation modal');
+      }
     });
+
+    // Wait for Create Project modal to close and projects-manager screen to be visible
+    const projectsManagerPage = new ProjectsManagerPage(page);
+    await projectsManagerPage.waitForProjectFormClosedAndProjectsManagerScreen();
+    console.log('✅ Create Project modal closed, projects-manager screen visible');
 
     // Wait for success feedback (toast or redirect)
     await expect(page.getByText(/created|success/i)).toBeVisible({ timeout: 30000 });
