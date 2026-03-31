@@ -1140,6 +1140,68 @@ test.describe('Ticket Creation', () => {
     const BATCH_SIZE = 5;
     const results = { successful: [], failed: [] };
 
+    // Optional override: exactly TOTAL_TICKETS entries each. Empty = use customer-style scenarios below.
+    // const bulk = require('../data/ticket-bulk-1000.json');
+    // const TICKET_SUBJECTS = bulk.subjects;
+    // const TICKET_MESSAGES = bulk.messages;
+    const TICKET_SUBJECTS = [];
+    const TICKET_MESSAGES = [];
+
+    // Simulated inbound customer queries: meter installation / new connections and billing complaints.
+    // Rotates by ticket index; ref number keeps each subject/message distinct across 1000 tickets.
+    const SCENARIO_SUBJECTS = [
+      'New meter installation — site visit not scheduled yet',
+      'Request update on my pending meter installation',
+      'Technician missed the appointment for meter fitting',
+      'Meter installed but not activated on your system',
+      'Wrong meter serial recorded after installation',
+      'Safety concern: meter cabinet left open after install',
+      'Need new connection — no meter at property',
+      'Temporary supply ended; need permanent meter',
+      'Bill is much higher than last month — please explain',
+      'Charged for estimated usage — I have actual readings',
+      'Duplicate charge on my electricity bill',
+      'Payment made but not reflected on latest bill',
+      'Wrong tariff applied on my account',
+      'Dispute: standing charge does not match my contract',
+      'Request itemized bill and meter reading history',
+      'Direct debit amount changed without notice',
+      'Final bill after move-out — meter reading query',
+      'Credit note not applied from previous complaint',
+      'Smart meter display does not match bill units',
+      'Request meter accuracy check / calibration',
+    ];
+
+    const SCENARIO_MESSAGES = [
+      'Hello, I applied for a new meter several weeks ago and still have no installation date. My reference is on file at my address. Please confirm when a technician will attend and what I need to prepare on site.',
+      'I am writing to follow up on my meter installation request. Work at my premises is delayed and I need power for essential equipment. Kindly prioritize scheduling or advise the current status.',
+      'Your engineer did not arrive during the agreed window yesterday. I took time off work. Please reschedule at the earliest slot and confirm by SMS or email.',
+      'The meter was fitted last week but my online account still shows the old status. I am worried I am being billed incorrectly. Please activate the new meter and confirm the start reading.',
+      'The serial number on my bill does not match the label on the meter on my wall. I have photos if needed. Please correct the account before the next billing cycle.',
+      'After the installation visit, the outdoor meter enclosure was left unsecured. Please arrange a follow-up visit to close and seal it properly for safety.',
+      'I am moving into a new build and there is no meter yet. I need a new connection and meter installation. Please advise required documents and lead time.',
+      'My temporary builder supply has ended. I need a permanent meter and account in my name. What are the next steps and fees?',
+      'My latest bill is almost double the previous month. I have not changed usage. Please review the meter readings and explain the increase.',
+      'I believe you are using estimates. I can provide actual meter readings from the display. Please rebill using the correct figures.',
+      'I see the same charge twice for the same period on my statement. Please confirm this is an error and refund the duplicate amount.',
+      'I paid the full balance via bank transfer on the due date; the new bill still shows arrears. Please trace the payment and update my account.',
+      'My contract says a different unit rate than what appears on the bill. Please verify the tariff code and correct any overcharge.',
+      'The standing charge on my bill does not match what I signed up for. Please send a breakdown and adjust if wrong.',
+      'Please send a full breakdown of charges and daily meter readings for the last six months. I need this for my records.',
+      'My direct debit amount was increased without explanation. Please justify the change or revert to the previous amount until clarified.',
+      'I have moved out and received a final bill. The closing read does not match what I noted on the meter. Please reconcile and reissue.',
+      'You issued a credit for a billing error last month but it is not on my current bill. Please apply the credit and confirm the balance.',
+      'The usage on my smart meter in-home display does not match the consumption on my bill. Please investigate and fix the mapping.',
+      'I suspect the meter is faulty. Please arrange a test or replacement. I will not accept estimated bills until this is resolved.',
+    ];
+
+    if (TICKET_SUBJECTS.length > 0 && TICKET_SUBJECTS.length !== TOTAL_TICKETS) {
+      throw new Error(`TICKET_SUBJECTS must be empty or have length ${TOTAL_TICKETS} (got ${TICKET_SUBJECTS.length})`);
+    }
+    if (TICKET_MESSAGES.length > 0 && TICKET_MESSAGES.length !== TOTAL_TICKETS) {
+      throw new Error(`TICKET_MESSAGES must be empty or have length ${TOTAL_TICKETS} (got ${TICKET_MESSAGES.length})`);
+    }
+
     // Match format of "should create a ticket with all required fields"
     const baseTestData = {
       purpose: 'Customer Service',
@@ -1154,6 +1216,22 @@ test.describe('Ticket Creation', () => {
       contactEmail: 'test@example.com',
       referenceNo: 'REF-12345',
     };
+
+    function subjectForTicket(index) {
+      if (TICKET_SUBJECTS.length === TOTAL_TICKETS) {
+        return TICKET_SUBJECTS[index];
+      }
+      const scenario = SCENARIO_SUBJECTS[index % SCENARIO_SUBJECTS.length];
+      return `${scenario} [Ref: CUST-${String(index + 1).padStart(4, '0')}]`;
+    }
+
+    function messageForTicket(index) {
+      if (TICKET_MESSAGES.length === TOTAL_TICKETS) {
+        return TICKET_MESSAGES[index];
+      }
+      const body = SCENARIO_MESSAGES[index % SCENARIO_MESSAGES.length];
+      return `${body}\n\nCustomer reference: CUST-${String(index + 1).padStart(4, '0')}.`;
+    }
 
     async function createSingleTicket(browser, ticketIndex) {
       let context;
@@ -1191,8 +1269,8 @@ test.describe('Ticket Creation', () => {
         const subjectInput = page.locator('input[placeholder*="Subject" i], input[placeholder*="Enter Subject"]').first();
         await expect(subjectInput).toBeVisible({ timeout: 15000 });
 
-        // Fill Subject with unique name
-        const uniqueSubject = `Test Ticket #${ticketIndex + 1} - Automated Playwright Test`;
+        // Subject and message: from TICKET_SUBJECTS / TICKET_MESSAGES when length === TOTAL_TICKETS, else generated
+        const uniqueSubject = subjectForTicket(ticketIndex);
         await subjectInput.fill(uniqueSubject);
         console.log(`[${ticketIndex + 1}/${TOTAL_TICKETS}] Subject: ${uniqueSubject}`);
 
@@ -1200,7 +1278,7 @@ test.describe('Ticket Creation', () => {
         await selectComboboxOption(page, 'Purpose', baseTestData.purpose);
 
         // Fill Message
-        await fillTiptapEditor(page, baseTestData.message, true);
+        await fillTiptapEditor(page, messageForTicket(ticketIndex), true);
 
         // Fill Assign To
         await selectComboboxOption(page, 'Assign To', baseTestData.assignTo);

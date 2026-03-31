@@ -27,6 +27,24 @@ module.exports = {
     loginPage: '/auth/login',
     dashboard: '/dashboard/welcome',
     ticketsManager: '/dashboard/tickets-manager',
+    projectsManager: '/dashboard/projects-manager',
+  },
+
+  // Project creation test data
+  projectData: {
+    title: 'E2E Test Project - Automated Playwright Test',
+    description: 'This project was created by an automated Playwright test. Please review and process accordingly.',
+    ownerType: 'User',
+    owner: 'EHU',
+    template: '', // Optional - leave empty to skip
+    startDate: '2026-03-06T06:00',
+    dueDate: '2026-03-15T17:00',
+    estimatedHours: '40',
+    estimatedDays: '5',
+    priority: 'High',
+    status: 'To-Do',
+    projectType: 'Technical - Ticket',
+    reminderHours: '2',
   },
 
   // Task creation test data

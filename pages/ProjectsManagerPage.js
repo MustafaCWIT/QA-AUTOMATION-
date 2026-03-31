@@ -69,18 +69,70 @@ class ProjectsManagerPage {
   }
 
   /**
-   * Click the project ID link for a project row (opens/selects the project)
-   * @param {string} projectTitle - The project title to find in the table
+   * Click the project ID link for a project row (opens/selects the project) and wait for redirection
+   * @param {string|number} projectTitleOrId - Project title, alphanumeric ID (e.g. PJEHU-397187237), or internal row ID (e.g. 713)
+   * @param {object} options - Optional: { expectedUrl } - regex or string to assert final URL (e.g. /dashboard\/tasks\?.*projectId=713/)
    */
-  async clickProjectId(projectTitle) {
-    const projectRow = this.page.locator('table tbody tr').filter({ hasText: projectTitle }).first();
+  async clickProjectId(projectTitleOrId, options = {}) {
+    const { expectedUrl } = options;
+
+    // Scope to Projects table (has ID and Actions columns)
+    const projectsTable = this.page.locator('div.sidebar-scrollbar table').filter({
+      has: this.page.locator('th:has-text("ID")'),
+    }).first();
+
+    let projectRow;
+    const param = projectTitleOrId;
+
+    if (typeof param === 'number') {
+      projectRow = projectsTable.locator(`tbody tr[data-project-row="${param}"]`).first();
+    } else if (/^PJ[A-Za-z]+-\d+$/.test(param)) {
+      projectRow = projectsTable.locator('tbody tr').filter({ has: this.page.locator(`td:has-text("${param}")`) }).first();
+    } else {
+      projectRow = projectsTable.locator('tbody tr').filter({ hasText: param }).first();
+    }
+
     await expect(projectRow).toBeVisible({ timeout: 15000 });
 
-    // Project ID is in the first column — clickable span with format PJEHU-XXXXX
-    const projectIdLink = projectRow.locator('td').first().locator('span.text-indigo-600, span[class*="indigo"]').first();
-    await expect(projectIdLink).toBeVisible({ timeout: 5000 });
-    await projectIdLink.click();
-    await this.page.waitForTimeout(1000);
+    // First cell (ID column) - click the cell or the span inside; handler may be on either
+    const idCell = projectRow.locator('td').first();
+    const projectIdSpan = idCell.locator('span.text-indigo-600').first();
+
+    await expect(idCell).toBeVisible({ timeout: 10000 });
+
+    // Scroll table container: ensure ID column (left) is visible, then scroll row into view
+    const tableContainer = this.page.locator('div.sidebar-scrollbar').filter({
+      has: projectsTable,
+    }).first();
+    if (await tableContainer.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await tableContainer.evaluate((el) => {
+        el.scrollLeft = 0; // ID column is first
+      });
+      await this.page.waitForTimeout(200);
+    }
+    await projectIdSpan.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(300);
+
+    const currentUrl = this.page.url();
+
+    // Try span click, then force click, then JS click (bypasses overlay/visibility)
+    try {
+      await projectIdSpan.click({ timeout: 5000 });
+    } catch {
+      try {
+        await projectIdSpan.click({ force: true, timeout: 5000 });
+      } catch {
+        await projectIdSpan.evaluate((el) => el.click());
+      }
+    }
+
+    // Wait for redirection
+    if (expectedUrl) {
+      await expect(this.page).toHaveURL(expectedUrl, { timeout: 15000 });
+    } else {
+      await this.page.waitForURL((url) => url.href !== currentUrl, { timeout: 15000 });
+    }
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**

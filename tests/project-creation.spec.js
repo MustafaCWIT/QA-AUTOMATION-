@@ -283,6 +283,12 @@ test.describe('Project Creation', () => {
     // Wait for success feedback (toast or redirect)
     await expect(page.getByText(/created|success/i)).toBeVisible({ timeout: 30000 });
     console.log('✅ Project created successfully!');
+
+    // Click on project ID to redirect to tasks view (e.g. /dashboard/tasks?task=713&source=projects&projectId=713&view=list)
+    await projectsManagerPage.clickProjectId(projectData.title, {
+      expectedUrl: /\/dashboard\/tasks\?.*source=projects.*projectId=\d+.*view=list/,
+    });
+    console.log('✅ Clicked project ID, redirected to tasks view');
   });
 
   test('should validate that Title is required', async ({ page }) => {
