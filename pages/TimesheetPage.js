@@ -40,6 +40,10 @@ class TimesheetPage {
     this.activityAddButton = 'button[data-id="Timesheet Activity Add"]';
     this.activityCancelButton = 'button[data-id="Timesheet Activity Cancel"]';
     
+    // Submit for Approval (on the timesheet page, after activities are added)
+    // Disabled when total hours < shift hours
+    this.submitForApprovalButton = 'button[data-id="Timesheet Submit Approval"]';
+
     // Error Messages (case-insensitive with regex)
     this.allDaysExistError = 'text=/All days in this week already have timesheets/i';
     this.noDaySelectedError = 'text=/Please select a day/i';
@@ -50,6 +54,10 @@ class TimesheetPage {
     this.sameTimeError = 'text=/Start time and end time cannot be the same/i';
     this.invalidOvernightError = 'text=/Activity cannot extend into the next day/i';
     this.overlappingTimeError = 'text=/Overlapping Time Range|This time slot is already covered/i';
+
+    // Overdue alert — shown when previous timesheets must be submitted first
+    this.overdueAlert = 'div[role="alert"]:has-text("Overdue")';
+    this.overdueMessage = 'text=/Submit overdue timesheets before adding current or future dates/i';
   }
 
   /**
@@ -596,6 +604,58 @@ class TimesheetPage {
     const tooltip = await dayButton.getAttribute('title');
     if (tooltip) {
       expect(tooltip.toLowerCase()).toContain('already exists');
+    }
+  }
+
+  /**
+   * Submit timesheet for approval
+   * Tries multiple selectors to find the submit button
+   */
+  async submitForApproval() {
+    const submitButton = this.page.locator(this.submitForApprovalButton).first();
+
+    // Wait for button to be visible
+    await submitButton.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Check if disabled (total hours < shift hours)
+    const isDisabled = await submitButton.isDisabled();
+    if (isDisabled) {
+      const title = await submitButton.getAttribute('title').catch(() => '');
+      await this.page.screenshot({ path: 'submit-approval-disabled.png', fullPage: true }).catch(() => {});
+      throw new Error(`Submit for Approval button is disabled: "${title}"`);
+    }
+
+    await submitButton.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(500);
+    await submitButton.click();
+    await this.page.waitForTimeout(2000);
+
+    // Check for confirmation dialog and click "Submit for Approval" inside it
+    const dialog = this.page.locator('[role="dialog"]');
+    if (await dialog.isVisible({ timeout: 3000 }).catch(() => false)) {
+      // The dialog has its own "Submit for Approval" button — click it
+      const dialogSubmitBtn = dialog.locator('button:has-text("Submit for Approval")').first();
+      if (await dialogSubmitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await dialogSubmitBtn.click();
+        console.log('Clicked "Submit for Approval" in confirmation dialog');
+        await this.page.waitForTimeout(2000);
+      } else {
+        // Fallback: try other confirm button texts
+        const confirmButton = dialog.locator('button:has-text("Confirm"), button:has-text("Yes"), button:has-text("OK"), button:has-text("Submit")').first();
+        if (await confirmButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await confirmButton.click();
+          await this.page.waitForTimeout(2000);
+        }
+      }
+
+      // Wait for dialog to close
+      await this.page.waitForSelector('[role="dialog"]', { state: 'hidden', timeout: 10000 }).catch(() => {});
+    }
+
+    // Wait for success toast
+    const successToast = this.page.locator('text=/submitted|approval|success/i').first();
+    if (await successToast.isVisible({ timeout: 10000 }).catch(() => false)) {
+      console.log('Timesheet submitted for approval successfully');
     }
   }
 

@@ -28,31 +28,38 @@ async function selectComboboxOption(
   try {
     console.log(`Attempting to select "${optionText}" for "${label}"`);
     
-    // Strategy 1: Find combobox by label text - most reliable
     let comboboxTrigger = null;
     
-    // First, try to find the label
-    const labelElement = page.locator(`label:has-text("${label}")`).first();
-    const labelVisible = await labelElement.isVisible({ timeout: 3000 }).catch(() => false);
-    
-    if (labelVisible) {
-      // Find combobox button near the label - try multiple approaches
-      // Approach 1: Following sibling with combobox
-      comboboxTrigger = labelElement.locator('xpath=following-sibling::*//button[role="combobox"]').first();
-      
-      if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
-        // Approach 2: Parent container
-        const labelParent = labelElement.locator('..');
-        comboboxTrigger = labelParent.locator('button[role="combobox"]').first();
+    // Strategy 0: Purpose — prefer the combobox that shows "Select purpose..." (no separate Department step)
+    if (label === 'Purpose') {
+      const purposeByRole = page.getByRole('combobox', { name: /select purpose/i }).first();
+      if (await purposeByRole.isVisible({ timeout: 2000 }).catch(() => false)) {
+        comboboxTrigger = purposeByRole;
+      } else {
+        comboboxTrigger = page.locator('label:has-text("Purpose")').first().locator('xpath=following::button[@role="combobox"][1]');
       }
+    }
+
+    // Strategy 1: Find combobox by label text - most reliable (skip for Purpose, already handled)
+    if (!comboboxTrigger || !(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
+      const labelElement = page.locator(`label:has-text("${label}")`).first();
+      const labelVisible = await labelElement.isVisible({ timeout: 3000 }).catch(() => false);
       
-      if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
-        // Approach 3: Any following combobox button
-        comboboxTrigger = labelElement.locator('xpath=following::button[@role="combobox"][1]').first();
+      if (labelVisible) {
+        comboboxTrigger = labelElement.locator('xpath=following-sibling::*//button[role="combobox"]').first();
+        
+        if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
+          const labelParent = labelElement.locator('..');
+          comboboxTrigger = labelParent.locator('button[role="combobox"]').first();
+        }
+        
+        if (!(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
+          comboboxTrigger = labelElement.locator('xpath=following::button[@role="combobox"][1]').first();
+        }
       }
     }
     
-    // Strategy 2: Find by placeholder text (for Purpose: "Select purpose...")
+    // Strategy 2: Find by placeholder text
     if (!comboboxTrigger || !(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
       const placeholderMap = {
         'Purpose': 'Select purpose',
@@ -626,32 +633,37 @@ async function fillAutoComplete(
 }
 
 test.describe('Ticket Creation', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    // Skip beforeEach for the 1000-ticket test — it creates its own browser contexts
+    if (testInfo.title.includes('1000')) {
+      return;
+    }
+
     // Navigate to the tickets manager page
     const ticketsManagerPage = new TicketsManagerPage(page);
     await ticketsManagerPage.goto();
-    
+
     // Verify we're on the tickets manager page
     await ticketsManagerPage.verifyTicketsManagerPage();
-    
+
     // Click + Ticket button in top right corner to open ticket creation form
     await ticketsManagerPage.clickAddTicket();
-    
+
     // Wait for ticket creation form to appear
     await ticketsManagerPage.waitForTicketForm();
-    
+
     // Verify ticket creation form is open
     await ticketsManagerPage.verifyTicketFormOpen();
-    
+
     // Click the "Create" button to view the ticket creation form
     // This button has data-id="Create" and contains the text "Create"
     const createButton = page.locator('button[data-id="Create"]').first();
     await expect(createButton).toBeVisible({ timeout: 10000 });
     await createButton.click();
-    
+
     // Wait for the form to fully load after clicking Create
     await page.waitForTimeout(1000);
-    
+
     // Verify the form is visible by checking for Subject input
     const subjectInput = page.locator('input[placeholder*="Subject" i], input[placeholder*="Enter Subject"]').first();
     await expect(subjectInput).toBeVisible({ timeout: 15000 });
@@ -664,11 +676,11 @@ test.describe('Ticket Creation', () => {
     // ============================================
     const testData = {
       subject: 'Test Ticket - Automated Playwright Test',
-      purpose: 'General - Customer Service', // Change to match your actual purpose options (e.g., "General - Customer Service", "Meter Reading Dispute - Customer Service")
+      purpose: 'Customer Service', // Purpose combobox (e.g. "Select purpose...")
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'Reads', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
+      assignTo: 'CoO', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
       source: 'Email', // Change to match your actual source options
-      status: 'Assigned', // Change to match your actual status options
+      status: 'Closed', // Change to match your actual status options
       priority: 'Medium', // Change to match your actual priority options (Low, Medium, High, etc.)
       slaType: 'Higher', // Change to match your actual SLA options
       contactName: 'Test Contact',
@@ -681,7 +693,7 @@ test.describe('Ticket Creation', () => {
     const subjectInput = page.locator('input[placeholder*="Subject" i], input[placeholder*="Enter Subject"]').first();
     await subjectInput.fill(testData.subject);
     
-    // Fill Purpose (required) - using combobox
+    // Fill Purpose (required) — direct "Select purpose..." combobox; no department field before it
     await selectComboboxOption(page, 'Purpose', testData.purpose);
     
     // Fill Message (required) - using Tiptap editor
@@ -1128,12 +1140,75 @@ test.describe('Ticket Creation', () => {
     const BATCH_SIZE = 5;
     const results = { successful: [], failed: [] };
 
+    // Optional override: exactly TOTAL_TICKETS entries each. Empty = use customer-style scenarios below.
+    // const bulk = require('../data/ticket-bulk-1000.json');
+    // const TICKET_SUBJECTS = bulk.subjects;
+    // const TICKET_MESSAGES = bulk.messages;
+    const TICKET_SUBJECTS = [];
+    const TICKET_MESSAGES = [];
+
+    // Simulated inbound customer queries: meter installation / new connections and billing complaints.
+    // Rotates by ticket index; ref number keeps each subject/message distinct across 1000 tickets.
+    const SCENARIO_SUBJECTS = [
+      'New meter installation — site visit not scheduled yet',
+      'Request update on my pending meter installation',
+      'Technician missed the appointment for meter fitting',
+      'Meter installed but not activated on your system',
+      'Wrong meter serial recorded after installation',
+      'Safety concern: meter cabinet left open after install',
+      'Need new connection — no meter at property',
+      'Temporary supply ended; need permanent meter',
+      'Bill is much higher than last month — please explain',
+      'Charged for estimated usage — I have actual readings',
+      'Duplicate charge on my electricity bill',
+      'Payment made but not reflected on latest bill',
+      'Wrong tariff applied on my account',
+      'Dispute: standing charge does not match my contract',
+      'Request itemized bill and meter reading history',
+      'Direct debit amount changed without notice',
+      'Final bill after move-out — meter reading query',
+      'Credit note not applied from previous complaint',
+      'Smart meter display does not match bill units',
+      'Request meter accuracy check / calibration',
+    ];
+
+    const SCENARIO_MESSAGES = [
+      'Hello, I applied for a new meter several weeks ago and still have no installation date. My reference is on file at my address. Please confirm when a technician will attend and what I need to prepare on site.',
+      'I am writing to follow up on my meter installation request. Work at my premises is delayed and I need power for essential equipment. Kindly prioritize scheduling or advise the current status.',
+      'Your engineer did not arrive during the agreed window yesterday. I took time off work. Please reschedule at the earliest slot and confirm by SMS or email.',
+      'The meter was fitted last week but my online account still shows the old status. I am worried I am being billed incorrectly. Please activate the new meter and confirm the start reading.',
+      'The serial number on my bill does not match the label on the meter on my wall. I have photos if needed. Please correct the account before the next billing cycle.',
+      'After the installation visit, the outdoor meter enclosure was left unsecured. Please arrange a follow-up visit to close and seal it properly for safety.',
+      'I am moving into a new build and there is no meter yet. I need a new connection and meter installation. Please advise required documents and lead time.',
+      'My temporary builder supply has ended. I need a permanent meter and account in my name. What are the next steps and fees?',
+      'My latest bill is almost double the previous month. I have not changed usage. Please review the meter readings and explain the increase.',
+      'I believe you are using estimates. I can provide actual meter readings from the display. Please rebill using the correct figures.',
+      'I see the same charge twice for the same period on my statement. Please confirm this is an error and refund the duplicate amount.',
+      'I paid the full balance via bank transfer on the due date; the new bill still shows arrears. Please trace the payment and update my account.',
+      'My contract says a different unit rate than what appears on the bill. Please verify the tariff code and correct any overcharge.',
+      'The standing charge on my bill does not match what I signed up for. Please send a breakdown and adjust if wrong.',
+      'Please send a full breakdown of charges and daily meter readings for the last six months. I need this for my records.',
+      'My direct debit amount was increased without explanation. Please justify the change or revert to the previous amount until clarified.',
+      'I have moved out and received a final bill. The closing read does not match what I noted on the meter. Please reconcile and reissue.',
+      'You issued a credit for a billing error last month but it is not on my current bill. Please apply the credit and confirm the balance.',
+      'The usage on my smart meter in-home display does not match the consumption on my bill. Please investigate and fix the mapping.',
+      'I suspect the meter is faulty. Please arrange a test or replacement. I will not accept estimated bills until this is resolved.',
+    ];
+
+    if (TICKET_SUBJECTS.length > 0 && TICKET_SUBJECTS.length !== TOTAL_TICKETS) {
+      throw new Error(`TICKET_SUBJECTS must be empty or have length ${TOTAL_TICKETS} (got ${TICKET_SUBJECTS.length})`);
+    }
+    if (TICKET_MESSAGES.length > 0 && TICKET_MESSAGES.length !== TOTAL_TICKETS) {
+      throw new Error(`TICKET_MESSAGES must be empty or have length ${TOTAL_TICKETS} (got ${TICKET_MESSAGES.length})`);
+    }
+
+    // Match format of "should create a ticket with all required fields"
     const baseTestData = {
-      purpose: 'General - Customer Service',
+      purpose: 'Customer Service',
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'Reads',
+      assignTo: 'CoO',
       source: 'Email',
-      status: 'Assigned',
+      status: 'Closed',
       priority: 'Medium',
       slaType: 'Higher',
       contactName: 'Test Contact',
@@ -1142,19 +1217,35 @@ test.describe('Ticket Creation', () => {
       referenceNo: 'REF-12345',
     };
 
+    function subjectForTicket(index) {
+      if (TICKET_SUBJECTS.length === TOTAL_TICKETS) {
+        return TICKET_SUBJECTS[index];
+      }
+      const scenario = SCENARIO_SUBJECTS[index % SCENARIO_SUBJECTS.length];
+      return `${scenario} [Ref: CUST-${String(index + 1).padStart(4, '0')}]`;
+    }
+
+    function messageForTicket(index) {
+      if (TICKET_MESSAGES.length === TOTAL_TICKETS) {
+        return TICKET_MESSAGES[index];
+      }
+      const body = SCENARIO_MESSAGES[index % SCENARIO_MESSAGES.length];
+      return `${body}\n\nCustomer reference: CUST-${String(index + 1).padStart(4, '0')}.`;
+    }
+
     async function createSingleTicket(browser, ticketIndex) {
       let context;
       try {
         console.log(`[${ticketIndex + 1}/${TOTAL_TICKETS}] Starting ticket creation...`);
 
-        // Create a new browser context with saved auth state
+        // Create a new browser context with saved auth state and video recording
         context = await browser.newContext({
           baseURL: 'http://46.62.211.210:4003',
           storageState: '.auth/user.json',
           recordVideo: {
             dir: 'test-results/videos/',
             size: { width: 1280, height: 720 }
-          }
+          },
         });
         const page = await context.newPage();
 
@@ -1178,8 +1269,8 @@ test.describe('Ticket Creation', () => {
         const subjectInput = page.locator('input[placeholder*="Subject" i], input[placeholder*="Enter Subject"]').first();
         await expect(subjectInput).toBeVisible({ timeout: 15000 });
 
-        // Fill Subject with unique name
-        const uniqueSubject = `Test Ticket #${ticketIndex + 1} - Automated Playwright Test`;
+        // Subject and message: from TICKET_SUBJECTS / TICKET_MESSAGES when length === TOTAL_TICKETS, else generated
+        const uniqueSubject = subjectForTicket(ticketIndex);
         await subjectInput.fill(uniqueSubject);
         console.log(`[${ticketIndex + 1}/${TOTAL_TICKETS}] Subject: ${uniqueSubject}`);
 
@@ -1187,7 +1278,7 @@ test.describe('Ticket Creation', () => {
         await selectComboboxOption(page, 'Purpose', baseTestData.purpose);
 
         // Fill Message
-        await fillTiptapEditor(page, baseTestData.message, true);
+        await fillTiptapEditor(page, messageForTicket(ticketIndex), true);
 
         // Fill Assign To
         await selectComboboxOption(page, 'Assign To', baseTestData.assignTo);
@@ -1201,7 +1292,7 @@ test.describe('Ticket Creation', () => {
         // Fill Priority
         await selectComboboxOption(page, 'Priority', baseTestData.priority);
 
-        // Fill SLA if tab exists
+        // Navigate to SLA tab if needed (matches single-ticket test)
         const slaTab = page.locator('button:has-text("SLA")').first();
         if (await slaTab.isVisible({ timeout: 2000 }).catch(() => false)) {
           await slaTab.click();
@@ -1223,7 +1314,7 @@ test.describe('Ticket Creation', () => {
           }
         }
 
-        // Navigate to Contact Info tab
+        // Navigate to Contact Info tab (matches single-ticket test)
         const contactTabSelectors = [
           'button:has-text("Contact Info"):has(svg.lucide-user)',
           'button:has-text("Contact Info")',
@@ -1238,24 +1329,36 @@ test.describe('Ticket Creation', () => {
           contactTab = null;
         }
 
-        if (contactTab) {
-          const isActive = await contactTab.evaluate((el) => {
-            const classes = el.className || '';
-            return classes.includes('bg-[#4540a6]') || el.getAttribute('aria-selected') === 'true';
-          }).catch(() => false);
+        if (!contactTab) {
+          throw new Error('Contact Info tab not found');
+        }
 
-          if (!isActive) {
-            await contactTab.click();
-            await page.waitForTimeout(500);
-          }
+        await expect(contactTab).toBeVisible({ timeout: 5000 });
+
+        const isActive = await contactTab.evaluate((el) => {
+          const classes = el.className || '';
+          const bgColor = window.getComputedStyle(el).backgroundColor;
+          const borderColor = window.getComputedStyle(el).borderBottomColor;
+          return classes.includes('bg-[#4540a6]') ||
+            classes.includes('bg-blue') ||
+            el.getAttribute('aria-selected') === 'true' ||
+            bgColor.includes('70') ||
+            borderColor.includes('70');
+        }).catch(() => false);
+
+        if (!isActive) {
+          await contactTab.click();
+          await page.waitForTimeout(500);
         }
 
         await page.waitForTimeout(1500);
 
-        // Fill Contact Name
+        // Fill Contact Name (matches single-ticket test)
         const contactNameSelectors = [
           'input[placeholder*="Contact name" i]',
-          'input[placeholder*="Contact Name" i]'
+          'input[placeholder*="Contact Name" i]',
+          'label:has-text("Contact Name") + * input',
+          'label:has-text("Contact Name") ~ * input'
         ];
         let contactNameInput = null;
         for (const selector of contactNameSelectors) {
@@ -1266,23 +1369,38 @@ test.describe('Ticket Creation', () => {
         if (!contactNameInput) {
           const contactNameLabel = page.locator('label:has-text("Contact Name")').first();
           if (await contactNameLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
-            contactNameInput = contactNameLabel.locator('xpath=following::input[1]').first();
+            const labelParent = contactNameLabel.locator('..');
+            contactNameInput = labelParent.locator('input').first();
+            if (!(await contactNameInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+              contactNameInput = contactNameLabel.locator('xpath=following::input[1]').first();
+            }
           }
         }
-        if (contactNameInput) {
-          await contactNameInput.scrollIntoViewIfNeeded();
-          await contactNameInput.click();
+
+        await expect(contactNameInput).toBeVisible({ timeout: 10000 });
+        await contactNameInput.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await contactNameInput.click();
+        await page.waitForTimeout(200);
+        await contactNameInput.fill(baseTestData.contactName);
+        await page.waitForTimeout(500);
+
+        const contactNameValue = await contactNameInput.inputValue();
+        if (contactNameValue !== baseTestData.contactName) {
+          await contactNameInput.clear();
           await contactNameInput.fill(baseTestData.contactName);
-          await page.waitForTimeout(500);
+          await page.waitForTimeout(300);
         }
 
         // Fill Contact Phone
         await fillAutoComplete(page, 'Contact Phone', baseTestData.contactPhone);
 
-        // Fill To Recipients
+        // Fill To Recipients (matches single-ticket test)
         const toRecipientsSelectors = [
           'input[placeholder*="Type email" i]',
-          'input[placeholder*="email" i]'
+          'input[placeholder*="email" i]',
+          'label:has-text("To Recipients") + * input',
+          'label:has-text("To Recipients") ~ * input'
         ];
         let toRecipientsInput = null;
         for (const selector of toRecipientsSelectors) {
@@ -1293,18 +1411,33 @@ test.describe('Ticket Creation', () => {
         if (!toRecipientsInput) {
           const toRecipientsLabel = page.locator('label:has-text("To Recipients")').first();
           if (await toRecipientsLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
-            toRecipientsInput = toRecipientsLabel.locator('xpath=following::input[1]').first();
+            const labelParent = toRecipientsLabel.locator('..');
+            toRecipientsInput = labelParent.locator('input').first();
+            if (!(await toRecipientsInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+              toRecipientsInput = toRecipientsLabel.locator('xpath=following::input[1]').first();
+            }
           }
         }
-        if (toRecipientsInput) {
-          await toRecipientsInput.scrollIntoViewIfNeeded();
-          await toRecipientsInput.click();
+
+        await expect(toRecipientsInput).toBeVisible({ timeout: 10000 });
+        await toRecipientsInput.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await toRecipientsInput.click();
+        await page.waitForTimeout(200);
+        await toRecipientsInput.clear();
+        await page.waitForTimeout(200);
+        await toRecipientsInput.fill(baseTestData.contactEmail);
+        await page.waitForTimeout(300);
+
+        const emailValueBeforeEnter = await toRecipientsInput.inputValue().catch(() => '');
+        if (!emailValueBeforeEnter || !emailValueBeforeEnter.includes(baseTestData.contactEmail)) {
           await toRecipientsInput.clear();
           await toRecipientsInput.fill(baseTestData.contactEmail);
           await page.waitForTimeout(300);
-          await toRecipientsInput.press('Enter');
-          await page.waitForTimeout(800);
         }
+
+        await toRecipientsInput.press('Enter');
+        await page.waitForTimeout(800);
 
         // Optional: Fill Reference No
         const refNoInput = page.locator('input[placeholder*="Reference number" i], input[placeholder*="Reference No"]').first();
@@ -1314,13 +1447,16 @@ test.describe('Ticket Creation', () => {
 
         await page.waitForTimeout(1000);
 
-        // Find and click Submit/Create button
+        // Find Create button (matches single-ticket test strategies)
         let submitButton = null;
         const submitButtonSelectors = [
           'button[type="submit"]:has-text("Create")',
           'button[type="submit"]',
-          'button:has-text("Create")[type="submit"]'
+          'button:has-text("Create")[type="submit"]',
+          'button:has-text("Create")',
+          'button:has-text("Create Ticket")'
         ];
+
         for (const selector of submitButtonSelectors) {
           const buttons = page.locator(selector);
           const count = await buttons.count();
@@ -1329,7 +1465,9 @@ test.describe('Ticket Creation', () => {
             if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
               const text = await btn.textContent().catch(() => '');
               const btnType = await btn.getAttribute('type').catch(() => '');
-              if ((text.includes('Create') || btnType === 'submit') && !text.includes('Contact')) {
+              if ((text.includes('Create') || btnType === 'submit') &&
+                  !text.includes('Contact') &&
+                  (!text.includes('Ticket') || text.trim() === 'Create')) {
                 submitButton = btn;
                 break;
               }
@@ -1337,10 +1475,29 @@ test.describe('Ticket Creation', () => {
           }
           if (submitButton) break;
         }
+
+        if (!submitButton) {
+          const allButtons = page.locator('button');
+          const buttonCount = await allButtons.count();
+          for (let i = 0; i < buttonCount; i++) {
+            const btn = allButtons.nth(i);
+            if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+              const text = await btn.textContent().catch(() => '');
+              const classes = await btn.getAttribute('class').catch(() => '');
+              const bgColor = await btn.evaluate((el) => window.getComputedStyle(el).backgroundColor).catch(() => '');
+              if (text.includes('Create') && (classes.includes('#4540a6') || bgColor.includes('70'))) {
+                submitButton = btn;
+                break;
+              }
+            }
+          }
+        }
+
         if (!submitButton) {
           submitButton = page.locator('button[type="submit"]').last();
         }
 
+        await expect(submitButton).toBeVisible({ timeout: 10000 });
         await submitButton.scrollIntoViewIfNeeded();
         await page.waitForTimeout(500);
 
@@ -1354,10 +1511,7 @@ test.describe('Ticket Creation', () => {
           }
         }
 
-        // Wait for redirect to tickets manager
         await page.waitForURL('http://46.62.211.210:4003/dashboard/tickets-manager', { timeout: 30000 });
-
-        // Wait for "created successfully" toast
         await expect(page.getByText('created successfully')).toBeVisible({ timeout: 30000 });
 
         console.log(`  ✅ [${ticketIndex + 1}/${TOTAL_TICKETS}] Ticket "${uniqueSubject}" created successfully`);
