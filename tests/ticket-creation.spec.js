@@ -30,17 +30,17 @@ async function selectComboboxOption(
     
     let comboboxTrigger = null;
     
-    // Strategy 0: Purpose and Department are side-by-side under "Purpose*" — use position-based selectors
-    // Text-based selectors (e.g. "All departments") break after selection because the displayed text changes.
-    if (label === 'Department') {
-      // First combobox under Purpose section (stable — does not depend on displayed text)
-      comboboxTrigger = page.locator('label:has-text("Purpose")').first().locator('xpath=following::button[@role="combobox"][1]');
-    } else if (label === 'Purpose') {
-      // Second combobox under Purpose section (stable — does not depend on displayed text)
-      comboboxTrigger = page.locator('label:has-text("Purpose")').first().locator('xpath=following::button[@role="combobox"][2]');
+    // Strategy 0: Purpose — prefer the combobox that shows "Select purpose..." (no separate Department step)
+    if (label === 'Purpose') {
+      const purposeByRole = page.getByRole('combobox', { name: /select purpose/i }).first();
+      if (await purposeByRole.isVisible({ timeout: 2000 }).catch(() => false)) {
+        comboboxTrigger = purposeByRole;
+      } else {
+        comboboxTrigger = page.locator('label:has-text("Purpose")').first().locator('xpath=following::button[@role="combobox"][1]');
+      }
     }
-    
-    // Strategy 1: Find combobox by label text - most reliable (skip for Purpose/Department, already handled)
+
+    // Strategy 1: Find combobox by label text - most reliable (skip for Purpose, already handled)
     if (!comboboxTrigger || !(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
       const labelElement = page.locator(`label:has-text("${label}")`).first();
       const labelVisible = await labelElement.isVisible({ timeout: 3000 }).catch(() => false);
@@ -62,7 +62,6 @@ async function selectComboboxOption(
     // Strategy 2: Find by placeholder text
     if (!comboboxTrigger || !(await comboboxTrigger.isVisible({ timeout: 2000 }).catch(() => false))) {
       const placeholderMap = {
-        'Department': 'All departments',
         'Purpose': 'Select purpose',
         'Assign To': 'Select',
         'Source': 'Select',
@@ -151,7 +150,6 @@ async function selectComboboxOption(
       `input[placeholder*="Search ${label.toLowerCase()}" i]`,
       `input[placeholder*="search ${label.toLowerCase()}" i]`,
       // Common patterns
-      `input[placeholder*="Search departments" i]`,
       `input[placeholder*="Search purposes" i]`,
       `input[placeholder*="Type to search" i]`,
       `input[placeholder*="type to search" i]`,
@@ -678,8 +676,7 @@ test.describe('Ticket Creation', () => {
     // ============================================
     const testData = {
       subject: 'Test Ticket - Automated Playwright Test',
-      department: 'Reads', // Select department first (dropdown shows "All departments"); change to match your actual departments
-      purpose: 'Customer Service', // Select from Purpose dropdown (shows "Select purpose...") after department
+      purpose: 'Customer Service', // Purpose combobox (e.g. "Select purpose...")
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
       assignTo: 'CoO', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
       source: 'Email', // Change to match your actual source options
@@ -696,10 +693,7 @@ test.describe('Ticket Creation', () => {
     const subjectInput = page.locator('input[placeholder*="Subject" i], input[placeholder*="Enter Subject"]').first();
     await subjectInput.fill(testData.subject);
     
-    // Fill Department (required) - new dropdown under purposes; select first, then Purpose
-    await selectComboboxOption(page, 'Department', testData.department);
-    
-    // Fill Purpose (required) - using combobox
+    // Fill Purpose (required) — direct "Select purpose..." combobox; no department field before it
     await selectComboboxOption(page, 'Purpose', testData.purpose);
     
     // Fill Message (required) - using Tiptap editor
@@ -1148,7 +1142,6 @@ test.describe('Ticket Creation', () => {
 
     // Match format of "should create a ticket with all required fields"
     const baseTestData = {
-      department: 'Reads',
       purpose: 'Customer Service',
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
       assignTo: 'CoO',
@@ -1202,9 +1195,6 @@ test.describe('Ticket Creation', () => {
         const uniqueSubject = `Test Ticket #${ticketIndex + 1} - Automated Playwright Test`;
         await subjectInput.fill(uniqueSubject);
         console.log(`[${ticketIndex + 1}/${TOTAL_TICKETS}] Subject: ${uniqueSubject}`);
-
-        // Fill Department (required before Purpose)
-        await selectComboboxOption(page, 'Department', baseTestData.department);
 
         // Fill Purpose
         await selectComboboxOption(page, 'Purpose', baseTestData.purpose);
