@@ -200,6 +200,47 @@ async function fillDescription(page, content) {
 }
 
 // ============================================================
+// HELPER: Set due date for datetime-local input
+// ============================================================
+function formatDateTimeLocal(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function setDueDate(page, preferredDateTime) {
+  const dueDateInput = page
+    .locator('label:has-text("Due Date")')
+    .locator('..')
+    .locator('input[type="datetime-local"]')
+    .first();
+
+  await expect(dueDateInput).toBeVisible({ timeout: 5000 });
+  await dueDateInput.scrollIntoViewIfNeeded();
+  await dueDateInput.click();
+
+  // Build target date (preferred -> now + 1 hour)
+  let targetDate = preferredDateTime ? new Date(preferredDateTime) : new Date(Date.now() + 60 * 60 * 1000);
+  if (Number.isNaN(targetDate.getTime())) {
+    targetDate = new Date(Date.now() + 60 * 60 * 1000);
+  }
+
+  // Respect minimum value when present
+  const minValue = await dueDateInput.getAttribute('min');
+  if (minValue) {
+    const minDate = new Date(minValue);
+    if (!Number.isNaN(minDate.getTime()) && targetDate < minDate) {
+      targetDate = new Date(minDate.getTime() + 60 * 1000); // min + 1 minute
+    }
+  }
+
+  const finalValue = formatDateTimeLocal(targetDate);
+  await dueDateInput.fill(finalValue);
+  await dueDateInput.press('Tab');
+  await expect(dueDateInput).toHaveValue(finalValue);
+  console.log(`✅ Due Date: "${finalValue}"`);
+}
+
+// ============================================================
 // TEST SUITE
 // ============================================================
 test.describe('Task Creation', () => {
@@ -275,11 +316,8 @@ test.describe('Task Creation', () => {
       // Task Type is now mandatory - always open and select first option
       await selectFirstComboboxOption(page, 'Task Type');
 
-      // Due Date (required - input[type="datetime-local"])
-      const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
-      await expect(dueDateInput).toBeVisible({ timeout: 5000 });
-      await dueDateInput.fill(taskData.dueDate);
-      console.log(`✅ Due Date: "${taskData.dueDate}"`);
+      // Due Date (required - click field and set valid value)
+      await setDueDate(page, taskData.dueDate);
 
       // Reminder Hours (optional - defaults to 1)
       if (taskData.reminderHours) {
@@ -469,10 +507,8 @@ test.describe('Task Creation', () => {
         // Task Type is now mandatory - always open and select first option
         await selectFirstComboboxOption(page, 'Task Type');
 
-        // Due Date (required)
-        const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
-        await expect(dueDateInput).toBeVisible({ timeout: 5000 });
-        await dueDateInput.fill(baseTaskData.dueDate);
+        // Due Date (required - click field and set valid value)
+        await setDueDate(page, baseTaskData.dueDate);
 
         // Reminder Hours
         if (baseTaskData.reminderHours) {
