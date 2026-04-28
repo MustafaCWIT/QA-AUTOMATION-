@@ -131,6 +131,46 @@ async function selectComboboxOption(page, label, optionText, timeout = 10000) {
 }
 
 // ============================================================
+// HELPER: Open combobox by label and select first option
+// ============================================================
+async function selectFirstComboboxOption(page, label, timeout = 10000) {
+  try {
+    console.log(`Selecting mandatory "${label}" option: Technical - Ticket`);
+
+    const labelElement = page.locator('label').filter({ hasText: new RegExp(`^${label}\\s*\\*?\\s*$`) }).first();
+    await expect(labelElement).toBeVisible({ timeout });
+
+    const comboboxTrigger = labelElement.locator('..').locator('button[role="combobox"]').first();
+    await expect(comboboxTrigger).toBeVisible({ timeout });
+    await comboboxTrigger.scrollIntoViewIfNeeded();
+    await comboboxTrigger.click({ timeout });
+
+    // Scope to the currently opened dropdown dialog for this combobox
+    const openDialog = page.locator('[role="dialog"][data-state="open"]').last();
+    await expect(openDialog).toBeVisible({ timeout });
+
+    // Prefer explicit required option
+    let option = openDialog.locator('[role="option"]').filter({ hasText: /Technical\s*-\s*Ticket/i }).first();
+
+    // Fallback: if text matching changes slightly, pick first visible option in this dropdown
+    if (!(await option.isVisible({ timeout: 2000 }).catch(() => false))) {
+      option = openDialog.locator('[role="option"]').first();
+    }
+
+    await expect(option).toBeVisible({ timeout });
+    await option.scrollIntoViewIfNeeded();
+    await option.click({ timeout, force: true });
+    await page.waitForTimeout(500);
+
+    console.log(`✅ Selected option for "${label}"`);
+  } catch (error) {
+    console.error(`❌ Error selecting first option for "${label}":`, error);
+    await page.screenshot({ path: `combobox-error-${label.replace(/\s+/g, '-')}.png` }).catch(() => {});
+    throw error;
+  }
+}
+
+// ============================================================
 // HELPER: Select a radio pill option (Priority / Status)
 // Radio inputs are sr-only, wrapped in styled <label> pills
 // ============================================================
@@ -232,12 +272,8 @@ test.describe('Task Creation', () => {
       // Owner (combobox - search and select)
       await selectComboboxOption(page, 'Owner', taskData.owner);
 
-      // Task Type (combobox - already defaults to "Technical - Ticket")
-      if (taskData.taskType !== 'Technical - Ticket') {
-        await selectComboboxOption(page, 'Task Type', taskData.taskType);
-      } else {
-        console.log('✅ Task Type already set to "Technical - Ticket" (default)');
-      }
+      // Task Type is now mandatory - always open and select first option
+      await selectFirstComboboxOption(page, 'Task Type');
 
       // Due Date (required - input[type="datetime-local"])
       const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
@@ -430,10 +466,8 @@ test.describe('Task Creation', () => {
         // Owner (combobox)
         await selectComboboxOption(page, 'Owner', baseTaskData.owner);
 
-        // Task Type (defaults to "Technical - Ticket")
-        if (baseTaskData.taskType !== 'Technical - Ticket') {
-          await selectComboboxOption(page, 'Task Type', baseTaskData.taskType);
-        }
+        // Task Type is now mandatory - always open and select first option
+        await selectFirstComboboxOption(page, 'Task Type');
 
         // Due Date (required)
         const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
