@@ -208,6 +208,19 @@ async function setDueDate(page, preferredDateTime) {
 }
 
 // ============================================================
+// HELPER: Dismiss "Proceed without all Task details?" modal
+// ============================================================
+async function clickCreateTaskAnywayIfVisible(page, timeout = 5000) {
+  const taskConfirmModal = page.getByText('Proceed without all Task details?');
+  if (await taskConfirmModal.isVisible({ timeout }).catch(() => false)) {
+    const createAnywayBtn = page.locator('button:has-text("Create anyway")').first();
+    await expect(createAnywayBtn).toBeVisible({ timeout });
+    await createAnywayBtn.click();
+    console.log('✅ Clicked "Create anyway" in task confirmation modal');
+  }
+}
+
+// ============================================================
 // TEST SUITE
 // ============================================================
 test.describe('Project Creation', () => {
@@ -615,8 +628,134 @@ test.describe('Create Task Under Project', () => {
       await createTaskBtn.click();
       console.log('✅ Clicked Create Task button');
 
+      await clickCreateTaskAnywayIfVisible(page);
+
       await expect(page.getByText(/Task Created Successfully/i)).toBeVisible({ timeout: 30000 });
       console.log('✅ Task created successfully under project');
     });
+  });
+
+  test('should create 100 tasks under one project', async ({ page }) => {
+    test.setTimeout(3600000); // 60 minutes
+
+    const TOTAL_TASKS = 100;
+    const projectsManagerPage = new ProjectsManagerPage(page);
+    const tasksManagerPage = new TasksManagerPage(page);
+
+    const projectTitle = `E2E Bulk Task Under Project - ${Date.now()}`;
+    const baseTaskData = {
+      description: 'Bulk task created under a project via the ellipsis menu in an automated Playwright test.',
+      ownerType: 'User',
+      owner: 'EHU',
+      priority: 'High',
+      status: 'To-Do',
+      dueDate: '2026-12-31T17:00',
+      reminderHours: '2',
+      estimatedHours: '8',
+    };
+
+    await test.step('Create project', async () => {
+      await projectsManagerPage.goto();
+      await projectsManagerPage.clickAddProject();
+      await projectsManagerPage.waitForProjectForm();
+      await projectsManagerPage.verifyProjectFormOpen();
+
+      const titleInput = page.locator('input[placeholder="Title"]').first();
+      await titleInput.fill(projectTitle);
+      console.log(`✅ Project Title: "${projectTitle}"`);
+
+      await fillDescription(page, 'Bulk project for creating 100 tasks under one project.');
+
+      const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
+      await expect(dueDateInput).toBeVisible({ timeout: 10000 });
+      await dueDateInput.fill('2026-12-31T17:00');
+
+      try {
+        await selectComboboxOption(page, 'Project Type', 'Technical - Ticket');
+      } catch (_error) {
+        const projectTypeCombo = page.locator('button[role="combobox"]').filter({ hasText: /select project type/i }).first();
+        await expect(projectTypeCombo).toBeVisible({ timeout: 10000 });
+        await projectTypeCombo.click();
+        const projectTypeOption = page.locator('[role="option"]').filter({ hasText: /technical\s*-\s*ticket/i }).first();
+        await expect(projectTypeOption).toBeVisible({ timeout: 10000 });
+        await projectTypeOption.click();
+        await page.waitForTimeout(500);
+      }
+
+      const createProjectBtn = page.locator('button[data-id="Create Project"]').first();
+      await expect(createProjectBtn).toBeEnabled({ timeout: 10000 });
+      await createProjectBtn.click();
+
+      const createAnywayBtn = page.locator('button:has-text("Create anyway")').first();
+      if (await createAnywayBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
+        await createAnywayBtn.click();
+      }
+
+      await projectsManagerPage.waitForProjectFormClosedAndProjectsManagerScreen();
+      await expect(page.getByText(/created|success/i)).toBeVisible({ timeout: 30000 });
+      console.log('✅ Project created successfully');
+    });
+
+    for (let i = 0; i < TOTAL_TASKS; i++) {
+      const index = i + 1;
+      const uniqueTitle = `E2E Bulk Task Under Project ${String(index).padStart(3, '0')} - ${Date.now()}`;
+
+      await test.step(`Create task ${index}/${TOTAL_TASKS} under project`, async () => {
+        await projectsManagerPage.clickCreateTaskFromProject(projectTitle);
+        await projectsManagerPage.waitForTaskForm();
+        await tasksManagerPage.verifyTaskFormOpen();
+
+        const titleInput = page.locator('input[placeholder="Title"]').first();
+        await titleInput.fill(uniqueTitle);
+        console.log(`✅ Task Title: "${uniqueTitle}"`);
+
+        await fillDescription(page, `${baseTaskData.description} Task ${index}/${TOTAL_TASKS}.`);
+        await selectRadioPill(page, 'task_priority', baseTaskData.priority);
+        await selectRadioPill(page, 'task_status_by_dept', baseTaskData.status);
+
+        if (baseTaskData.ownerType !== 'User') {
+          await selectComboboxOption(page, 'Owner Type', baseTaskData.ownerType);
+        }
+
+        await selectComboboxOption(page, 'Owner', baseTaskData.owner);
+        await selectFirstComboboxOption(page, 'Task Type');
+        await setDueDate(page, baseTaskData.dueDate);
+
+        if (baseTaskData.reminderHours) {
+          const reminderInput = page.locator('input[placeholder="0 to disable"]').first();
+          if (await reminderInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await reminderInput.fill(baseTaskData.reminderHours);
+          }
+        }
+
+        if (baseTaskData.estimatedHours) {
+          const estimatedInput = page.locator('input[placeholder="Enter hours"]').first();
+          if (await estimatedInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await estimatedInput.fill(baseTaskData.estimatedHours);
+          }
+        }
+
+        const createTaskBtn = page.locator('button[data-id="Create Task"]').first();
+        await expect(createTaskBtn).toBeVisible({ timeout: 10000 });
+        await createTaskBtn.scrollIntoViewIfNeeded();
+        await expect(createTaskBtn).toBeEnabled({ timeout: 5000 });
+        await createTaskBtn.click();
+
+        await clickCreateTaskAnywayIfVisible(page);
+
+        await expect(page.getByText(/Task Created Successfully/i)).toBeVisible({ timeout: 30000 });
+
+        const taskFormBtn = page.locator('button[data-id="Create Task"]').first();
+        await Promise.race([
+          taskFormBtn.waitFor({ state: 'hidden', timeout: 15000 }),
+          taskFormBtn.waitFor({ state: 'detached', timeout: 15000 }),
+        ]).catch(() => {});
+
+        await expect(page).toHaveURL(/\/dashboard\/projects-manager/, { timeout: 15000 });
+        await page.waitForSelector('table tbody tr', { state: 'visible', timeout: 10000 });
+
+        console.log(`✅ Created task ${index}/${TOTAL_TASKS}: ${uniqueTitle}`);
+      });
+    }
   });
 });
