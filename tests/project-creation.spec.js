@@ -176,23 +176,23 @@ function formatDateTimeLocal(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-async function setDueDate(page, preferredDateTime) {
-  const dueDateInput = page
-    .locator('label:has-text("Due Date")')
+async function setDateTimeLocalByLabel(page, label, preferredDateTime) {
+  const dateInput = page
+    .locator(`label:has-text("${label}")`)
     .locator('..')
     .locator('input[type="datetime-local"]')
     .first();
 
-  await expect(dueDateInput).toBeVisible({ timeout: 5000 });
-  await dueDateInput.scrollIntoViewIfNeeded();
-  await dueDateInput.click();
+  await expect(dateInput).toBeVisible({ timeout: 5000 });
+  await dateInput.scrollIntoViewIfNeeded();
+  await dateInput.click();
 
   let targetDate = preferredDateTime ? new Date(preferredDateTime) : new Date(Date.now() + 60 * 60 * 1000);
   if (Number.isNaN(targetDate.getTime())) {
     targetDate = new Date(Date.now() + 60 * 60 * 1000);
   }
 
-  const minValue = await dueDateInput.getAttribute('min');
+  const minValue = await dateInput.getAttribute('min');
   if (minValue) {
     const minDate = new Date(minValue);
     if (!Number.isNaN(minDate.getTime()) && targetDate < minDate) {
@@ -201,10 +201,18 @@ async function setDueDate(page, preferredDateTime) {
   }
 
   const finalValue = formatDateTimeLocal(targetDate);
-  await dueDateInput.fill(finalValue);
-  await dueDateInput.press('Tab');
-  await expect(dueDateInput).toHaveValue(finalValue);
-  console.log(`✅ Due Date: "${finalValue}"`);
+  await dateInput.fill(finalValue);
+  await dateInput.press('Tab');
+  await expect(dateInput).toHaveValue(finalValue);
+  console.log(`✅ ${label}: "${finalValue}"`);
+}
+
+async function setStartDate(page, preferredDateTime) {
+  await setDateTimeLocalByLabel(page, 'Start Date', preferredDateTime);
+}
+
+async function setDueDate(page, preferredDateTime) {
+  await setDateTimeLocalByLabel(page, 'Due Date', preferredDateTime);
 }
 
 // ============================================================
@@ -482,7 +490,8 @@ test.describe('Create Task Under Project', () => {
       taskType: 'Technical - Ticket',
       priority: 'High',
       status: 'In Progress',
-      dueDate: '2026-03-15T17:00',
+      startDate: '2026-06-12T09:00',
+      dueDate: '2026-06-14T17:00',
       reminderHours: '2',
       estimatedHours: '8',
       checklistItem: 'Verify all user inputs are validated',
@@ -506,7 +515,7 @@ test.describe('Create Task Under Project', () => {
 
       const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
       await expect(dueDateInput).toBeVisible({ timeout: 5000 });
-      await dueDateInput.fill('2026-12-31T17:00');
+      await dueDateInput.fill('2026-06-16T17:00');
 
       try {
         await selectComboboxOption(page, 'Project Type', 'Technical - Ticket');
@@ -556,6 +565,7 @@ test.describe('Create Task Under Project', () => {
 
       await selectComboboxOption(page, 'Owner', taskData.owner);
       await selectFirstComboboxOption(page, 'Task Type');
+      await setStartDate(page, taskData.startDate);
       await setDueDate(page, taskData.dueDate);
 
       if (taskData.reminderHours) {
@@ -639,6 +649,10 @@ test.describe('Create Task Under Project', () => {
     test.setTimeout(3600000); // 60 minutes
 
     const TOTAL_TASKS = 100;
+    const PROJECT_DUE_DATE = '2026-06-16T17:00';
+    const TASK_START_DATE = '2026-06-12T09:00';
+    const TASK_DUE_DATE = '2026-06-14T17:00';
+
     const projectsManagerPage = new ProjectsManagerPage(page);
     const tasksManagerPage = new TasksManagerPage(page);
 
@@ -649,7 +663,8 @@ test.describe('Create Task Under Project', () => {
       owner: 'EHU',
       priority: 'High',
       status: 'To-Do',
-      dueDate: '2026-12-31T17:00',
+      startDate: TASK_START_DATE,
+      dueDate: TASK_DUE_DATE,
       reminderHours: '2',
       estimatedHours: '8',
     };
@@ -666,9 +681,7 @@ test.describe('Create Task Under Project', () => {
 
       await fillDescription(page, 'Bulk project for creating 100 tasks under one project.');
 
-      const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
-      await expect(dueDateInput).toBeVisible({ timeout: 10000 });
-      await dueDateInput.fill('2026-12-31T17:00');
+      await setDateTimeLocalByLabel(page, 'Due Date', PROJECT_DUE_DATE);
 
       try {
         await selectComboboxOption(page, 'Project Type', 'Technical - Ticket');
@@ -719,6 +732,7 @@ test.describe('Create Task Under Project', () => {
 
         await selectComboboxOption(page, 'Owner', baseTaskData.owner);
         await selectFirstComboboxOption(page, 'Task Type');
+        await setStartDate(page, baseTaskData.startDate);
         await setDueDate(page, baseTaskData.dueDate);
 
         if (baseTaskData.reminderHours) {
