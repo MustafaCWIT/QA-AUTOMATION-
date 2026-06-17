@@ -67,6 +67,8 @@ module.exports = {
   chatData: {
     searchQuery: process.env.CHAT_USER_SEARCH || 'Faiqa',
     userName: process.env.CHAT_USER_NAME || 'Faiqa Riaz',
+    message: process.env.CHAT_MESSAGE || 'E2E automated chat message from Playwright',
+    bulkMessageCount: Number(process.env.CHAT_BULK_COUNT) || 200,
   },
 
   timeouts: {

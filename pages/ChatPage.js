@@ -1,6 +1,14 @@
 const { expect } = require('@playwright/test');
 
 /**
+ * Escape special regex characters in user display names (e.g. "Aamir Mir (M)")
+ * @param {string} value
+ */
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Chat Page Object Model
  * Contains all selectors and methods for the chat widget on the welcome/dashboard page.
  * The chat icon (message-circle-plus) appears at the bottom-right corner of the page.
@@ -19,10 +27,11 @@ class ChatPage {
 
         // Chat panel/window selectors (common patterns for chat widgets)
         this.chatPanel = '[data-id="chat-panel"], [data-id="chat-window"], [role="dialog"]:has-text("Chat"), .chat-panel, .chat-window';
-        this.chatInput = 'textarea[placeholder*="message" i], input[placeholder*="message" i], textarea[placeholder*="type" i], input[placeholder*="type" i], [data-id="chat-input"]';
-        this.chatSendButton = 'button:has-text("Send"), button[data-id="send-message"], button[type="submit"]:has(svg)';
+        this.chatMessageInput = 'textarea.mention-editor__input, textarea[placeholder="Type a message..."]';
+        this.chatSendButton = 'button.btn-primary:has(svg.lucide-send), button:has(svg.lucide-send)';
+        this.chatConversationArea = 'div.chat-bg-pattern';
+        this.chatMessageBubble = '[data-message-id]';
         this.chatCloseButton = 'button:has-text("Close"), button[aria-label="Close"], button:has(svg.lucide-x)';
-        this.chatMessages = '.chat-messages, .messages-container, [data-id="chat-messages"]';
 
         // Chat list (inside iframe) — search, filters, and user cards
         this.chatSearchInput = 'input[placeholder="Search or start a new chat"]';
@@ -33,14 +42,20 @@ class ChatPage {
     }
 
     /**
-     * Locate a user card button by display name inside the chat iframe
+     * Locate a visible user card button by display name inside the chat iframe.
+     * Scoped to chat rows (user icon) and filters out hidden duplicates still in the DOM.
      * @param {import('@playwright/test').FrameLocator} frame
      * @param {string} userName
      */
     getUserCardLocator(frame, userName) {
-        return frame.locator('button').filter({
-            has: frame.locator('span.font-medium', { hasText: userName }),
-        });
+        const namePattern = new RegExp(escapeRegExp(userName), 'i');
+
+        return frame
+            .locator('button:has(svg.lucide-user)')
+            .filter({
+                has: frame.locator('span.font-medium', { hasText: namePattern }),
+            })
+            .filter({ visible: true });
     }
 
     /**
@@ -168,9 +183,10 @@ class ChatPage {
         const frame = this.getChatFrame();
         const searchInput = frame.locator(this.chatSearchInput);
         await searchInput.waitFor({ state: 'visible', timeout: 10000 });
-        await searchInput.clear();
-        await searchInput.fill(searchText);
-        await this.page.waitForTimeout(800);
+        await searchInput.click();
+        await searchInput.fill('');
+        await searchInput.pressSequentially(searchText, { delay: 30 });
+        await this.page.waitForTimeout(1200);
     }
 
     /**
@@ -180,7 +196,9 @@ class ChatPage {
     async waitForSearchResults(userName) {
         const frame = this.getChatFrame();
         const userCard = this.getUserCardLocator(frame, userName).first();
-        await expect(userCard).toBeVisible({ timeout: 15000 });
+        await userCard.waitFor({ state: 'visible', timeout: 20000 });
+        await userCard.scrollIntoViewIfNeeded();
+        await expect(userCard).toBeVisible({ timeout: 5000 });
     }
 
     /**
@@ -204,10 +222,19 @@ class ChatPage {
     async clickUserCard(userName) {
         const frame = this.getChatFrame();
         const userCard = this.getUserCardLocator(frame, userName).first();
-        await userCard.waitFor({ state: 'visible', timeout: 15000 });
+
+        await userCard.waitFor({ state: 'visible', timeout: 20000 });
         await userCard.scrollIntoViewIfNeeded();
-        await userCard.click();
-        await this.page.waitForTimeout(1000);
+        await expect(userCard).toBeEnabled({ timeout: 5000 });
+
+        await userCard.click({ timeout: 10000 });
+
+        try {
+            await this.waitForConversationView();
+        } catch {
+            await userCard.click({ force: true });
+            await this.waitForConversationView();
+        }
     }
 
     /**
@@ -238,46 +265,53 @@ class ChatPage {
     }
 
     /**
-     * Verify a specific user's conversation is open
+     * Verify a specific user's conversation is open (message composer visible)
      * @param {string} userName - Display name of the user whose chat should be open
      */
     async verifyUserChatOpen(userName) {
+        await this.waitForConversationView();
+
         const frame = this.getChatFrame();
-        const chatHeader = frame.locator(`span.font-medium:has-text("${userName}"), h1:has-text("${userName}"), h2:has-text("${userName}"), h3:has-text("${userName}")`).first();
-        await expect(chatHeader).toBeVisible({ timeout: 15000 });
+        const chatHeader = frame.locator(
+            `header span.font-medium:has-text("${userName}"), header span.font-semibold:has-text("${userName}"), h1:has-text("${userName}"), h2:has-text("${userName}"), h3:has-text("${userName}")`,
+        ).first();
+        const headerVisible = await chatHeader.isVisible({ timeout: 5000 }).catch(() => false);
+
+        if (headerVisible) {
+            await expect(chatHeader).toBeVisible({ timeout: 15000 });
+            return;
+        }
+
+        await expect(frame.locator(`span.font-medium:has-text("${userName}")`).first()).toBeVisible({ timeout: 15000 });
     }
 
     /**
-     * Type a message in the chat input field
+     * Wait for the conversation view (message thread + composer) after selecting a user
+     */
+    async waitForConversationView() {
+        const frame = this.getChatFrame();
+        await expect(frame.locator(this.chatMessageInput)).toBeVisible({ timeout: 15000 });
+    }
+
+    /**
+     * Type a message in the conversation composer
      * @param {string} message - The message to type
      */
     async typeMessage(message) {
         const frame = this.getChatFrame();
-        const chatInput = frame.locator(this.chatInput).first();
-        const isInFrame = await chatInput.isVisible({ timeout: 3000 }).catch(() => false);
-
-        const input = isInFrame
-            ? chatInput
-            : this.page.locator(this.chatInput).first();
-
-        await input.waitFor({ state: 'visible', timeout: 10000 });
-        await expect(input).toBeEnabled({ timeout: 5000 });
+        const input = frame.locator(this.chatMessageInput).first();
+        await input.waitFor({ state: 'visible', timeout: 15000 });
+        await input.click();
         await input.fill(message);
-        await this.page.waitForTimeout(300);
+        await expect(frame.locator(this.chatSendButton).first()).toBeVisible({ timeout: 10000 });
     }
 
     /**
-     * Click the send button to send the chat message
+     * Click the send button (appears after typing a message)
      */
     async clickSend() {
         const frame = this.getChatFrame();
-        const frameSendBtn = frame.locator(this.chatSendButton).first();
-        const isInFrame = await frameSendBtn.isVisible({ timeout: 3000 }).catch(() => false);
-
-        const sendBtn = isInFrame
-            ? frameSendBtn
-            : this.page.locator(this.chatSendButton).first();
-
+        const sendBtn = frame.locator(this.chatSendButton).first();
         await sendBtn.waitFor({ state: 'visible', timeout: 10000 });
         await expect(sendBtn).toBeEnabled({ timeout: 5000 });
         await sendBtn.click();
@@ -291,6 +325,37 @@ class ChatPage {
     async sendMessage(message) {
         await this.typeMessage(message);
         await this.clickSend();
+    }
+
+    /**
+     * Send multiple messages with numbered bodies: "1", "2", "3", ...
+     * @param {number} count - How many messages to send
+     * @param {{ startAt?: number, logEvery?: number }} [options]
+     */
+    async sendBulkMessages(count, { startAt = 1, logEvery = 10 } = {}) {
+        for (let i = 0; i < count; i++) {
+            const messageNumber = startAt + i;
+            const body = String(messageNumber);
+            await this.sendMessage(body);
+
+            if (logEvery > 0 && (i + 1) % logEvery === 0) {
+                console.log(`Sent ${i + 1}/${count} — message body: ${body}`);
+            }
+        }
+
+        console.log(`Bulk send complete: ${count} messages (${startAt} to ${startAt + count - 1})`);
+    }
+
+    /**
+     * Verify a sent message appears in the conversation thread
+     * @param {string} message - Message text to verify
+     */
+    async verifyMessageSent(message) {
+        const frame = this.getChatFrame();
+        const messageBubble = frame.locator(this.chatMessageBubble).filter({
+            has: frame.locator('.whitespace-pre-wrap', { hasText: message }),
+        }).last();
+        await expect(messageBubble).toBeVisible({ timeout: 15000 });
     }
 
     /**

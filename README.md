@@ -16,4 +16,13 @@ npx playwright test tests/project-creation.spec.js -g "should create 100 tasks u
 
   npx playwright test tests/chat.spec.js -g "should select a user"
 
-  $env:CHAT_USER_SEARCH="Aamir"; $env:CHAT_USER_NAME="Aamir Mir (M)"; npx playwright test tests/chat.spec.js -g "search and select"
+  
+npx playwright test tests/chat.spec.js -g "send a message"
+
+$env:CHAT_USER_SEARCH="Aamir"; $env:CHAT_USER_NAME="Aamir Mir (M)"; npx playwright test tests/chat.spec.js -g "search.*select"
+
+npx playwright test tests/chat.spec.js -g "bulk numbered"
+
+$env:CHAT_USER_SEARCH="Aamir"; $env:CHAT_USER_NAME="Aamir Mir (M)"; $env:CHAT_BULK_COUNT="200"; npx playwright test tests/chat.spec.js -g "bulk numbered"
+
+$env:CHAT_BULK_COUNT="5"; npx playwright test tests/chat.spec.js -g "bulk numbered"

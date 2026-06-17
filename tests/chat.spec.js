@@ -27,9 +27,9 @@ test.describe('Chat - Open Chat from Welcome Page', () => {
         await chatPage.verifyChatOpen();
     });
 
-    test('should search and select a user from chat list', async ({ page }) => {
+    test('should search, select a user, and send a message', async ({ page }) => {
         const chatPage = new ChatPage(page);
-        const { searchQuery, userName } = testData.chatData;
+        const { searchQuery, userName, message } = testData.chatData;
 
         await chatPage.goto();
         await chatPage.verifyOnWelcomePage();
@@ -38,5 +38,26 @@ test.describe('Chat - Open Chat from Welcome Page', () => {
 
         await chatPage.searchAndSelectUser(searchQuery, userName);
         await chatPage.verifyUserChatOpen(userName);
+
+        await chatPage.sendMessage(message);
+        await chatPage.verifyMessageSent(message);
+    });
+
+    test('should send bulk numbered messages to a user', async ({ page }) => {
+        test.setTimeout(900000);
+
+        const chatPage = new ChatPage(page);
+        const { searchQuery, userName, bulkMessageCount } = testData.chatData;
+
+        await chatPage.goto();
+        await chatPage.verifyOnWelcomePage();
+        await chatPage.clickChatIcon();
+        await chatPage.verifyChatOpen();
+
+        await chatPage.searchAndSelectUser(searchQuery, userName);
+        await chatPage.verifyUserChatOpen(userName);
+
+        await chatPage.sendBulkMessages(bulkMessageCount);
+        await chatPage.verifyMessageSent(String(bulkMessageCount));
     });
 });
