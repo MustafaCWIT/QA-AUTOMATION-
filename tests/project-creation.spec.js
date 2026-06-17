@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { ProjectsManagerPage } = require('../pages/ProjectsManagerPage');
+const { TasksManagerPage } = require('../pages/TasksManagerPage');
 const testData = require('../utils/test-data');
 
 /**
@@ -132,6 +133,102 @@ async function selectRadioPill(page, radioName, optionText) {
 }
 
 // ============================================================
+// HELPER: Open combobox by label and select first option (Task Type)
+// ============================================================
+async function selectFirstComboboxOption(page, label, timeout = 10000) {
+  try {
+    console.log(`Selecting mandatory "${label}" option: Technical - Ticket`);
+
+    const labelElement = page.locator('label').filter({ hasText: new RegExp(`^${label}\\s*\\*?\\s*$`) }).first();
+    await expect(labelElement).toBeVisible({ timeout });
+
+    const comboboxTrigger = labelElement.locator('..').locator('button[role="combobox"]').first();
+    await expect(comboboxTrigger).toBeVisible({ timeout });
+    await comboboxTrigger.scrollIntoViewIfNeeded();
+    await comboboxTrigger.click({ timeout });
+
+    const openDialog = page.locator('[role="dialog"][data-state="open"]').last();
+    await expect(openDialog).toBeVisible({ timeout });
+
+    let option = openDialog.locator('[role="option"]').filter({ hasText: /Technical\s*-\s*Ticket/i }).first();
+    if (!(await option.isVisible({ timeout: 2000 }).catch(() => false))) {
+      option = openDialog.locator('[role="option"]').first();
+    }
+
+    await expect(option).toBeVisible({ timeout });
+    await option.scrollIntoViewIfNeeded();
+    await option.click({ timeout, force: true });
+    await page.waitForTimeout(500);
+
+    console.log(`✅ Selected option for "${label}"`);
+  } catch (error) {
+    console.error(`❌ Error selecting first option for "${label}":`, error);
+    await page.screenshot({ path: `combobox-error-${label.replace(/\s+/g, '-')}.png` }).catch(() => {});
+    throw error;
+  }
+}
+
+// ============================================================
+// HELPER: Set due date for datetime-local input (Task form)
+// ============================================================
+function formatDateTimeLocal(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function setDateTimeLocalByLabel(page, label, preferredDateTime) {
+  const dateInput = page
+    .locator(`label:has-text("${label}")`)
+    .locator('..')
+    .locator('input[type="datetime-local"]')
+    .first();
+
+  await expect(dateInput).toBeVisible({ timeout: 5000 });
+  await dateInput.scrollIntoViewIfNeeded();
+  await dateInput.click();
+
+  let targetDate = preferredDateTime ? new Date(preferredDateTime) : new Date(Date.now() + 60 * 60 * 1000);
+  if (Number.isNaN(targetDate.getTime())) {
+    targetDate = new Date(Date.now() + 60 * 60 * 1000);
+  }
+
+  const minValue = await dateInput.getAttribute('min');
+  if (minValue) {
+    const minDate = new Date(minValue);
+    if (!Number.isNaN(minDate.getTime()) && targetDate < minDate) {
+      targetDate = new Date(minDate.getTime() + 60 * 1000);
+    }
+  }
+
+  const finalValue = formatDateTimeLocal(targetDate);
+  await dateInput.fill(finalValue);
+  await dateInput.press('Tab');
+  await expect(dateInput).toHaveValue(finalValue);
+  console.log(`✅ ${label}: "${finalValue}"`);
+}
+
+async function setStartDate(page, preferredDateTime) {
+  await setDateTimeLocalByLabel(page, 'Start Date', preferredDateTime);
+}
+
+async function setDueDate(page, preferredDateTime) {
+  await setDateTimeLocalByLabel(page, 'Due Date', preferredDateTime);
+}
+
+// ============================================================
+// HELPER: Dismiss "Proceed without all Task details?" modal
+// ============================================================
+async function clickCreateTaskAnywayIfVisible(page, timeout = 5000) {
+  const taskConfirmModal = page.getByText('Proceed without all Task details?');
+  if (await taskConfirmModal.isVisible({ timeout }).catch(() => false)) {
+    const createAnywayBtn = page.locator('button:has-text("Create anyway")').first();
+    await expect(createAnywayBtn).toBeVisible({ timeout });
+    await createAnywayBtn.click();
+    console.log('✅ Clicked "Create anyway" in task confirmation modal');
+  }
+}
+
+// ============================================================
 // TEST SUITE
 // ============================================================
 test.describe('Project Creation', () => {
@@ -153,7 +250,7 @@ test.describe('Project Creation', () => {
       title: 'E2E Test Project - Automated Playwright Test',
       description: 'This project was created by an automated Playwright test.',
       ownerType: 'User',
-      owner: 'EHU',
+      owner: 'Mohammad Shoaib',
       startDate: '2026-03-06T06:00',
       dueDate: '2026-03-15T17:00',
       estimatedHours: '40',
@@ -291,6 +388,67 @@ test.describe('Project Creation', () => {
     console.log('✅ Clicked project ID, redirected to tasks view');
   });
 
+  test('should create 100 projects under one test', async ({ page }) => {
+    test.setTimeout(3600000); // 60 minutes
+
+    const TOTAL_PROJECTS = 100;
+    const projectsManagerPage = new ProjectsManagerPage(page);
+
+    for (let i = 0; i < TOTAL_PROJECTS; i++) {
+      const index = i + 1;
+      const uniqueTitle = `E2E Bulk Project ${String(index).padStart(3, '0')} - ${Date.now()}`;
+
+      await test.step(`Create project ${index}/${TOTAL_PROJECTS}`, async () => {
+        // Fill required and key fields for stable bulk creation.
+        const titleInput = page.locator('input[placeholder="Title"]').first();
+        await expect(titleInput).toBeVisible({ timeout: 10000 });
+        await titleInput.fill(uniqueTitle);
+
+        const description = `Bulk project description for project ${index}/${TOTAL_PROJECTS}.`;
+        await fillDescription(page, description);
+
+        const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
+        await expect(dueDateInput).toBeVisible({ timeout: 10000 });
+        await dueDateInput.fill('2026-12-31T17:00');
+
+        // Project Type combobox is sometimes rendered with placeholder text instead of easy label targeting.
+        try {
+          await selectComboboxOption(page, 'Project Type', 'Technical - Ticket');
+        } catch (_error) {
+          const projectTypeCombo = page.locator('button[role="combobox"]').filter({ hasText: /select project type/i }).first();
+          await expect(projectTypeCombo).toBeVisible({ timeout: 10000 });
+          await projectTypeCombo.click();
+
+          const projectTypeOption = page.locator('[role="option"]').filter({ hasText: /technical\s*-\s*ticket/i }).first();
+          await expect(projectTypeOption).toBeVisible({ timeout: 10000 });
+          await projectTypeOption.click();
+          await page.waitForTimeout(500);
+          console.log('✅ Selected "Technical - Ticket" for Project Type (fallback locator)');
+        }
+
+        const createProjectBtn = page.locator('button[data-id="Create Project"]').first();
+        await expect(createProjectBtn).toBeVisible({ timeout: 10000 });
+        await expect(createProjectBtn).toBeEnabled({ timeout: 10000 });
+        await createProjectBtn.click();
+
+        const createAnywayBtn = page.locator('button:has-text("Create anyway")').first();
+        if (await createAnywayBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
+          await createAnywayBtn.click();
+        }
+
+        await projectsManagerPage.waitForProjectFormClosedAndProjectsManagerScreen();
+        await expect(page.getByText(/created|success/i)).toBeVisible({ timeout: 30000 });
+        console.log(`✅ Created project ${index}/${TOTAL_PROJECTS}: ${uniqueTitle}`);
+      });
+
+      if (index < TOTAL_PROJECTS) {
+        await projectsManagerPage.clickAddProject();
+        await projectsManagerPage.waitForProjectForm();
+        await projectsManagerPage.verifyProjectFormOpen();
+      }
+    }
+  });
+
   test('should validate that Title is required', async ({ page }) => {
     const createProjectBtn = page.locator('button[data-id="Create Project"]').first();
     await expect(createProjectBtn).toBeVisible({ timeout: 5000 });
@@ -310,5 +468,308 @@ test.describe('Project Creation', () => {
 
     await expect(createProjectBtn).toBeEnabled({ timeout: 5000 });
     console.log('✅ Create Project button becomes enabled after filling Title + Due Date');
+  });
+});
+
+// ============================================================
+// CREATE TASK UNDER PROJECT (sibling describe — no beforeEach)
+// ============================================================
+test.describe('Create Task Under Project', () => {
+  test('should create task under project', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const projectsManagerPage = new ProjectsManagerPage(page);
+    const tasksManagerPage = new TasksManagerPage(page);
+
+    const projectTitle = `E2E Task Under Project - ${Date.now()}`;
+    const taskData = {
+      title: `E2E Task Under Project Task - ${Date.now()}`,
+      description: 'This task was created under a project via the ellipsis menu in an automated Playwright test.',
+      ownerType: 'User',
+      owner: 'EHU',
+      taskType: 'Technical - Ticket',
+      priority: 'High',
+      status: 'In Progress',
+      startDate: '2026-06-12T09:00',
+      dueDate: '2026-06-14T17:00',
+      reminderHours: '2',
+      estimatedHours: '8',
+      checklistItem: 'Verify all user inputs are validated',
+      checklistMandatory: true,
+      checklistAttachment: false,
+      assigneeType: 'User',
+      assigneeName: 'EHU',
+    };
+
+    await test.step('Create project', async () => {
+      await projectsManagerPage.goto();
+      await projectsManagerPage.clickAddProject();
+      await projectsManagerPage.waitForProjectForm();
+      await projectsManagerPage.verifyProjectFormOpen();
+
+      const titleInput = page.locator('input[placeholder="Title"]').first();
+      await titleInput.fill(projectTitle);
+      console.log(`✅ Project Title: "${projectTitle}"`);
+
+      await fillDescription(page, 'Project created for task-under-project E2E test.');
+
+      const dueDateInput = page.locator('label:has-text("Due Date")').locator('..').locator('input[type="datetime-local"]').first();
+      await expect(dueDateInput).toBeVisible({ timeout: 5000 });
+      await dueDateInput.fill('2026-06-16T17:00');
+
+      try {
+        await selectComboboxOption(page, 'Project Type', 'Technical - Ticket');
+      } catch (_error) {
+        const projectTypeCombo = page.locator('button[role="combobox"]').filter({ hasText: /select project type/i }).first();
+        await expect(projectTypeCombo).toBeVisible({ timeout: 10000 });
+        await projectTypeCombo.click();
+        const projectTypeOption = page.locator('[role="option"]').filter({ hasText: /technical\s*-\s*ticket/i }).first();
+        await expect(projectTypeOption).toBeVisible({ timeout: 10000 });
+        await projectTypeOption.click();
+        await page.waitForTimeout(500);
+      }
+
+      const createProjectBtn = page.locator('button[data-id="Create Project"]').first();
+      await expect(createProjectBtn).toBeEnabled({ timeout: 10000 });
+      await createProjectBtn.click();
+
+      const createAnywayBtn = page.locator('button:has-text("Create anyway")').first();
+      if (await createAnywayBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
+        await createAnywayBtn.click();
+      }
+
+      await projectsManagerPage.waitForProjectFormClosedAndProjectsManagerScreen();
+      await expect(page.getByText(/created|success/i)).toBeVisible({ timeout: 30000 });
+      console.log('✅ Project created successfully');
+    });
+
+    await test.step('Open Create Task from project ellipsis menu', async () => {
+      await projectsManagerPage.clickCreateTaskFromProject(projectTitle);
+      await projectsManagerPage.waitForTaskForm();
+      await tasksManagerPage.verifyTaskFormOpen();
+      console.log('✅ Task form opened from project ellipsis menu');
+    });
+
+    await test.step('Fill Task Details', async () => {
+      const titleInput = page.locator('input[placeholder="Title"]').first();
+      await titleInput.fill(taskData.title);
+      console.log(`✅ Task Title: "${taskData.title}"`);
+
+      await fillDescription(page, taskData.description);
+      await selectRadioPill(page, 'task_priority', taskData.priority);
+      await selectRadioPill(page, 'task_status_by_dept', taskData.status);
+
+      if (taskData.ownerType !== 'User') {
+        await selectComboboxOption(page, 'Owner Type', taskData.ownerType);
+      }
+
+      await selectComboboxOption(page, 'Owner', taskData.owner);
+      await selectFirstComboboxOption(page, 'Task Type');
+      await setStartDate(page, taskData.startDate);
+      await setDueDate(page, taskData.dueDate);
+
+      if (taskData.reminderHours) {
+        const reminderInput = page.locator('input[placeholder="0 to disable"]').first();
+        if (await reminderInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await reminderInput.fill(taskData.reminderHours);
+        }
+      }
+
+      if (taskData.estimatedHours) {
+        const estimatedInput = page.locator('input[placeholder="Enter hours"]').first();
+        if (await estimatedInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await estimatedInput.fill(taskData.estimatedHours);
+        }
+      }
+    });
+
+    await test.step('Add Checklist Items', async () => {
+      await page.locator('button[data-id="Checklist"]').click();
+      await page.waitForTimeout(500);
+
+      const checklistInput = page.getByPlaceholder('Add new checklist item');
+      await expect(checklistInput).toBeVisible({ timeout: 5000 });
+      await checklistInput.fill(taskData.checklistItem);
+
+      if (taskData.checklistMandatory) {
+        await page.getByLabel('Mandatory').check();
+      }
+      if (taskData.checklistAttachment) {
+        await page.getByLabel('Attachment').check();
+      }
+
+      await page.locator('button[data-id="Add"]').click();
+      await page.waitForTimeout(500);
+      await expect(page.getByText(taskData.checklistItem)).toBeVisible({ timeout: 5000 });
+      console.log(`✅ Checklist item added: "${taskData.checklistItem}"`);
+    });
+
+    await test.step('Add Assignees', async () => {
+      await page.locator('button[data-id="Assignee(s)"]').click();
+      await page.waitForTimeout(500);
+
+      const searchAssigneeCombobox = page.locator('button[role="combobox"]:has-text("Search assignee")').first();
+      await expect(searchAssigneeCombobox).toBeVisible({ timeout: 5000 });
+      await searchAssigneeCombobox.click();
+      await page.waitForTimeout(500);
+
+      const searchInput = page.locator('[role="dialog"] input, [data-radix-popper-content-wrapper] input').first();
+      await expect(searchInput).toBeVisible({ timeout: 5000 });
+      await searchInput.fill(taskData.assigneeName);
+      await page.waitForTimeout(1500);
+
+      const assigneeOption = page.locator('[role="option"]').filter({ hasText: taskData.assigneeName }).first();
+      await expect(assigneeOption).toBeVisible({ timeout: 10000 });
+      await assigneeOption.click();
+      await page.waitForTimeout(500);
+
+      const addBtn = page.locator('button[data-id="Add Assignee"]').first();
+      await expect(addBtn).toBeEnabled({ timeout: 5000 });
+      await addBtn.click();
+      await page.waitForTimeout(800);
+      console.log(`✅ Assignee added: ${taskData.assigneeName}`);
+    });
+
+    await test.step('Submit Task', async () => {
+      const createTaskBtn = page.locator('button[data-id="Create Task"]').first();
+      await expect(createTaskBtn).toBeVisible({ timeout: 10000 });
+      await createTaskBtn.scrollIntoViewIfNeeded();
+      await expect(createTaskBtn).toBeEnabled({ timeout: 5000 });
+      await createTaskBtn.click();
+      console.log('✅ Clicked Create Task button');
+
+      await clickCreateTaskAnywayIfVisible(page);
+
+      await expect(page.getByText(/Task Created Successfully/i)).toBeVisible({ timeout: 30000 });
+      console.log('✅ Task created successfully under project');
+    });
+  });
+
+  test('should create 100 tasks under one project', async ({ page }) => {
+    test.setTimeout(3600000); // 60 minutes
+
+    const TOTAL_TASKS = 100;
+                                      const PROJECT_DUE_DATE = '2026-06-16T17:00';
+    const TASK_START_DATE = '2026-06-12T09:00';
+    const TASK_DUE_DATE = '2026-06-14T17:00';
+
+    const projectsManagerPage = new ProjectsManagerPage(page);
+    const tasksManagerPage = new TasksManagerPage(page);
+
+    const projectTitle = `E2E Bulk Task Under Project - ${Date.now()}`;
+    const baseTaskData = {
+      description: 'Bulk task created under a project via the ellipsis menu in an automated Playwright test.',
+      ownerType: 'User',
+      owner: 'EHU',
+      priority: 'High',
+      status: 'To-Do',
+      startDate: TASK_START_DATE,
+      dueDate: TASK_DUE_DATE,
+      reminderHours: '2',
+      estimatedHours: '8',
+    };
+
+    await test.step('Create project', async () => {
+      await projectsManagerPage.goto();
+      await projectsManagerPage.clickAddProject();
+      await projectsManagerPage.waitForProjectForm();
+      await projectsManagerPage.verifyProjectFormOpen();
+
+      const titleInput = page.locator('input[placeholder="Title"]').first();
+      await titleInput.fill(projectTitle);
+      console.log(`✅ Project Title: "${projectTitle}"`);
+
+      await fillDescription(page, 'Bulk project for creating 100 tasks under one project.');
+
+      await setDateTimeLocalByLabel(page, 'Due Date', PROJECT_DUE_DATE);
+
+      try {
+        await selectComboboxOption(page, 'Project Type', 'Technical - Ticket');
+      } catch (_error) {
+        const projectTypeCombo = page.locator('button[role="combobox"]').filter({ hasText: /select project type/i }).first();
+        await expect(projectTypeCombo).toBeVisible({ timeout: 10000 });
+        await projectTypeCombo.click();
+        const projectTypeOption = page.locator('[role="option"]').filter({ hasText: /technical\s*-\s*ticket/i }).first();
+        await expect(projectTypeOption).toBeVisible({ timeout: 10000 });
+        await projectTypeOption.click();
+        await page.waitForTimeout(500);
+      }
+
+      const createProjectBtn = page.locator('button[data-id="Create Project"]').first();
+      await expect(createProjectBtn).toBeEnabled({ timeout: 10000 });
+      await createProjectBtn.click();
+
+      const createAnywayBtn = page.locator('button:has-text("Create anyway")').first();
+      if (await createAnywayBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
+        await createAnywayBtn.click();
+      }
+
+      await projectsManagerPage.waitForProjectFormClosedAndProjectsManagerScreen();
+      await expect(page.getByText(/created|success/i)).toBeVisible({ timeout: 30000 });
+      console.log('✅ Project created successfully');
+    });
+
+    for (let i = 0; i < TOTAL_TASKS; i++) {
+      const index = i + 1;
+      const uniqueTitle = `E2E Bulk Task Under Project ${String(index).padStart(3, '0')} - ${Date.now()}`;
+
+      await test.step(`Create task ${index}/${TOTAL_TASKS} under project`, async () => {
+        await projectsManagerPage.clickCreateTaskFromProject(projectTitle);
+        await projectsManagerPage.waitForTaskForm();
+        await tasksManagerPage.verifyTaskFormOpen();
+
+        const titleInput = page.locator('input[placeholder="Title"]').first();
+        await titleInput.fill(uniqueTitle);
+        console.log(`✅ Task Title: "${uniqueTitle}"`);
+
+        await fillDescription(page, `${baseTaskData.description} Task ${index}/${TOTAL_TASKS}.`);
+        await selectRadioPill(page, 'task_priority', baseTaskData.priority);
+        await selectRadioPill(page, 'task_status_by_dept', baseTaskData.status);
+
+        if (baseTaskData.ownerType !== 'User') {
+          await selectComboboxOption(page, 'Owner Type', baseTaskData.ownerType);
+        }
+
+        await selectComboboxOption(page, 'Owner', baseTaskData.owner);
+        await selectFirstComboboxOption(page, 'Task Type');
+        await setStartDate(page, baseTaskData.startDate);
+        await setDueDate(page, baseTaskData.dueDate);
+
+        if (baseTaskData.reminderHours) {
+          const reminderInput = page.locator('input[placeholder="0 to disable"]').first();
+          if (await reminderInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await reminderInput.fill(baseTaskData.reminderHours);
+          }
+        }
+
+        if (baseTaskData.estimatedHours) {
+          const estimatedInput = page.locator('input[placeholder="Enter hours"]').first();
+          if (await estimatedInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await estimatedInput.fill(baseTaskData.estimatedHours);
+          }
+        }
+
+        const createTaskBtn = page.locator('button[data-id="Create Task"]').first();
+        await expect(createTaskBtn).toBeVisible({ timeout: 10000 });
+        await createTaskBtn.scrollIntoViewIfNeeded();
+        await expect(createTaskBtn).toBeEnabled({ timeout: 5000 });
+        await createTaskBtn.click();
+
+        await clickCreateTaskAnywayIfVisible(page);
+
+        await expect(page.getByText(/Task Created Successfully/i)).toBeVisible({ timeout: 30000 });
+
+        const taskFormBtn = page.locator('button[data-id="Create Task"]').first();
+        await Promise.race([
+          taskFormBtn.waitFor({ state: 'hidden', timeout: 15000 }),
+          taskFormBtn.waitFor({ state: 'detached', timeout: 15000 }),
+        ]).catch(() => {});
+
+        await expect(page).toHaveURL(/\/dashboard\/projects-manager/, { timeout: 15000 });
+        await page.waitForSelector('table tbody tr', { state: 'visible', timeout: 10000 });
+
+        console.log(`✅ Created task ${index}/${TOTAL_TASKS}: ${uniqueTitle}`);
+      });
+    }
   });
 });

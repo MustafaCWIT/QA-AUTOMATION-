@@ -678,11 +678,11 @@ test.describe('Ticket Creation', () => {
       subject: 'Test Ticket - Automated Playwright Test',
       purpose: 'Customer Service', // Purpose combobox (e.g. "Select purpose...")
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'CoO', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
+      assignTo: 'Reads', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
       source: 'Email', // Change to match your actual source options
-      status: 'Closed', // Change to match your actual status options
+      status: 'Assigned', // Change to match your actual status options
       priority: 'Medium', // Change to match your actual priority options (Low, Medium, High, etc.)
-      slaType: 'Higher', // Change to match your actual SLA options
+      slaType: 'High', // Change to match your actual SLA options
       contactName: 'Test Contact',
       contactPhone: '1234567890',
       contactEmail: 'test@example.com',
@@ -1206,11 +1206,11 @@ test.describe('Ticket Creation', () => {
     const baseTestData = {
       purpose: 'Customer Service',
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
-      assignTo: 'CoO',
+      assignTo: 'Reads',
       source: 'Email',
-      status: 'Closed',
+      status: 'Assigned',
       priority: 'Medium',
-      slaType: 'Higher',
+      slaType: 'High',
       contactName: 'Test Contact',
       contactPhone: '1234567890',
       contactEmail: 'test@example.com',
@@ -1568,4 +1568,12 @@ test.describe('Ticket Creation', () => {
     expect(results.successful.length).toBeGreaterThan(0);
   });
 });
+
+
+
+
+
+
+
+
 
