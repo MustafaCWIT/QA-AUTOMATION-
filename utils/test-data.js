@@ -65,7 +65,8 @@ module.exports = {
   },
 
   chatData: {
-    userName: 'Faiqa Riaz',
+    searchQuery: process.env.CHAT_USER_SEARCH || 'Faiqa',
+    userName: process.env.CHAT_USER_NAME || 'Faiqa Riaz',
   },
 
   timeouts: {

@@ -147,13 +147,17 @@ class ChatPage {
     }
 
     /**
-     * Wait for the chat list screen (search bar + Recent section + user cards)
+     * Wait for the chat list screen to be ready (search bar visible)
+     * @param {{ requireRecent?: boolean }} [options] - When true, also wait for Recent section + user cards
      */
-    async waitForChatList() {
+    async waitForChatList({ requireRecent = false } = {}) {
         const frame = this.getChatFrame();
         await expect(frame.locator(this.chatSearchInput)).toBeVisible({ timeout: 15000 });
-        await expect(frame.locator(this.chatRecentSection)).toBeVisible({ timeout: 15000 });
-        await expect(frame.locator(this.chatUserCardButton).first()).toBeVisible({ timeout: 15000 });
+
+        if (requireRecent) {
+            await expect(frame.locator(this.chatRecentSection)).toBeVisible({ timeout: 15000 });
+            await expect(frame.locator(this.chatUserCardButton).first()).toBeVisible({ timeout: 15000 });
+        }
     }
 
     /**
@@ -164,8 +168,19 @@ class ChatPage {
         const frame = this.getChatFrame();
         const searchInput = frame.locator(this.chatSearchInput);
         await searchInput.waitFor({ state: 'visible', timeout: 10000 });
+        await searchInput.clear();
         await searchInput.fill(searchText);
-        await this.page.waitForTimeout(500);
+        await this.page.waitForTimeout(800);
+    }
+
+    /**
+     * Wait for a user card matching the given name to appear in search/list results
+     * @param {string} userName - Display name (or partial match) on the user card
+     */
+    async waitForSearchResults(userName) {
+        const frame = this.getChatFrame();
+        const userCard = this.getUserCardLocator(frame, userName).first();
+        await expect(userCard).toBeVisible({ timeout: 15000 });
     }
 
     /**
@@ -196,17 +211,29 @@ class ChatPage {
     }
 
     /**
-     * Search for a user (optional) and open their chat
-     * @param {string} userName - Display name on the user card
-     * @param {{ search?: boolean }} [options]
+     * Search in the chat bar, then click a user from the filtered results
+     * @param {string} searchQuery - Text to type in the search bar
+     * @param {string} [userName] - Display name to click (defaults to searchQuery for partial match)
      */
-    async selectUser(userName, { search = false } = {}) {
+    async searchAndSelectUser(searchQuery, userName = searchQuery) {
         await this.waitForChatList();
+        await this.searchChat(searchQuery);
+        await this.waitForSearchResults(userName);
+        await this.clickUserCard(userName);
+    }
 
+    /**
+     * Open a user's chat — searches by default; pass search: false to click from Recent list
+     * @param {string} userName - Display name on the user card to click
+     * @param {{ search?: boolean, searchQuery?: string }} [options]
+     */
+    async selectUser(userName, { search = true, searchQuery = userName } = {}) {
         if (search) {
-            await this.searchChat(userName);
+            await this.searchAndSelectUser(searchQuery, userName);
+            return;
         }
 
+        await this.waitForChatList({ requireRecent: true });
         await this.clickUserCard(userName);
     }
 

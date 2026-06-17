@@ -27,16 +27,16 @@ test.describe('Chat - Open Chat from Welcome Page', () => {
         await chatPage.verifyChatOpen();
     });
 
-    test('should select a user from chat list and open their conversation', async ({ page }) => {
+    test('should search and select a user from chat list', async ({ page }) => {
         const chatPage = new ChatPage(page);
-        const { userName } = testData.chatData;
+        const { searchQuery, userName } = testData.chatData;
 
         await chatPage.goto();
         await chatPage.verifyOnWelcomePage();
         await chatPage.clickChatIcon();
         await chatPage.verifyChatOpen();
 
-        await chatPage.selectUser(userName);
+        await chatPage.searchAndSelectUser(searchQuery, userName);
         await chatPage.verifyUserChatOpen(userName);
     });
 });
