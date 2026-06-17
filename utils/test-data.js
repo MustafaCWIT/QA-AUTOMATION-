@@ -5,10 +5,10 @@
  */
 
 module.exports = {
-  // Test credentials - Update with your test account details
+
   credentials: {
     valid: {
-      email: process.env.TEST_EMAIL || 'mydtest@maxenpower.com',
+      email: process.env.TEST_EMAIL || 'ehu@maxenpower.com',
       password: process.env.TEST_PASSWORD || 'maxen12345',
     },
     invalid: {
@@ -35,7 +35,7 @@ module.exports = {
     title: 'E2E Test Project - Automated Playwright Test',
     description: 'This project was created by an automated Playwright test. Please review and process accordingly.',
     ownerType: 'User',
-    owner: 'EHU',
+    owner: 'Mohammad Shoaib',
     template: '', // Optional - leave empty to skip
     startDate: '2026-03-06T06:00',
     dueDate: '2026-03-15T17:00',
@@ -47,7 +47,7 @@ module.exports = {
     reminderHours: '2',
   },
 
-  // Task creation test data
+ 
   taskData: {
     title: 'E2E Test Task - Automated Playwright Test',
     description: 'This task was created by an automated Playwright test.',
@@ -65,7 +65,7 @@ module.exports = {
     assigneeName: 'EHU',
   },
 
-  // Timeouts (in milliseconds)
+
   timeouts: {
     short: 2000,
     medium: 5000,

@@ -680,7 +680,7 @@ test.describe('Ticket Creation', () => {
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
       assignTo: 'Reads', // Change to match actual user names in your system (can use just the name, e.g., "Reads" or full format "Reads (testreads@maxenpower.com)")
       source: 'Email', // Change to match your actual source options
-      status: 'New', // Change to match your actual status options
+      status: 'Assigned', // Change to match your actual status options
       priority: 'Medium', // Change to match your actual priority options (Low, Medium, High, etc.)
       slaType: 'High', // Change to match your actual SLA options
       contactName: 'Test Contact',
@@ -1208,7 +1208,7 @@ test.describe('Ticket Creation', () => {
       message: 'This is a test ticket created by Playwright automation. Please review and process accordingly.',
       assignTo: 'Reads',
       source: 'Email',
-      status: 'New',
+      status: 'Assigned',
       priority: 'Medium',
       slaType: 'High',
       contactName: 'Test Contact',
@@ -1568,4 +1568,12 @@ test.describe('Ticket Creation', () => {
     expect(results.successful.length).toBeGreaterThan(0);
   });
 });
+
+
+
+
+
+
+
+
 
