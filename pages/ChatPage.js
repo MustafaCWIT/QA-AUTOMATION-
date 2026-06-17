@@ -23,6 +23,32 @@ class ChatPage {
         this.chatSendButton = 'button:has-text("Send"), button[data-id="send-message"], button[type="submit"]:has(svg)';
         this.chatCloseButton = 'button:has-text("Close"), button[aria-label="Close"], button:has(svg.lucide-x)';
         this.chatMessages = '.chat-messages, .messages-container, [data-id="chat-messages"]';
+
+        // Chat list (inside iframe) — search, filters, and user cards
+        this.chatSearchInput = 'input[placeholder="Search or start a new chat"]';
+        this.chatRecentSection = 'div.uppercase:has-text("Recent")';
+        this.chatUserCardButton = 'button:has(span.font-medium):has(svg.lucide-user)';
+        this.chatFilterBar = '.overflow-x-auto.scrollbar-hide';
+        this.chatUserCard = (userName) => `button:has(span.font-medium:text("${userName}"))`;
+    }
+
+    /**
+     * Locate a user card button by display name inside the chat iframe
+     * @param {import('@playwright/test').FrameLocator} frame
+     * @param {string} userName
+     */
+    getUserCardLocator(frame, userName) {
+        return frame.locator('button').filter({
+            has: frame.locator('span.font-medium', { hasText: userName }),
+        });
+    }
+
+    /**
+     * Get the chat iframe frameLocator (chat UI loads inside an iframe)
+     * @returns {import('@playwright/test').FrameLocator}
+     */
+    getChatFrame() {
+        return this.page.frameLocator('iframe').first();
     }
 
     /**
@@ -121,14 +147,95 @@ class ChatPage {
     }
 
     /**
+     * Wait for the chat list screen (search bar + Recent section + user cards)
+     */
+    async waitForChatList() {
+        const frame = this.getChatFrame();
+        await expect(frame.locator(this.chatSearchInput)).toBeVisible({ timeout: 15000 });
+        await expect(frame.locator(this.chatRecentSection)).toBeVisible({ timeout: 15000 });
+        await expect(frame.locator(this.chatUserCardButton).first()).toBeVisible({ timeout: 15000 });
+    }
+
+    /**
+     * Search for a user or chat in the search bar
+     * @param {string} searchText - Text to search for
+     */
+    async searchChat(searchText) {
+        const frame = this.getChatFrame();
+        const searchInput = frame.locator(this.chatSearchInput);
+        await searchInput.waitFor({ state: 'visible', timeout: 10000 });
+        await searchInput.fill(searchText);
+        await this.page.waitForTimeout(500);
+    }
+
+    /**
+     * Click a quick filter tab (All, Unread, Groups, Customers)
+     * @param {'All' | 'Unread' | 'Groups' | 'Customers'} filterName
+     */
+    async selectChatFilter(filterName) {
+        const frame = this.getChatFrame();
+        const filterBtn = frame
+            .locator(this.chatFilterBar)
+            .getByRole('button', { name: filterName, exact: true });
+        await filterBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await filterBtn.click();
+        await this.page.waitForTimeout(500);
+    }
+
+    /**
+     * Click a user card in the chat list to open their conversation
+     * @param {string} userName - Display name shown on the user card (e.g. "Aamir Mir (M)")
+     */
+    async clickUserCard(userName) {
+        const frame = this.getChatFrame();
+        const userCard = this.getUserCardLocator(frame, userName).first();
+        await userCard.waitFor({ state: 'visible', timeout: 15000 });
+        await userCard.scrollIntoViewIfNeeded();
+        await userCard.click();
+        await this.page.waitForTimeout(1000);
+    }
+
+    /**
+     * Search for a user (optional) and open their chat
+     * @param {string} userName - Display name on the user card
+     * @param {{ search?: boolean }} [options]
+     */
+    async selectUser(userName, { search = false } = {}) {
+        await this.waitForChatList();
+
+        if (search) {
+            await this.searchChat(userName);
+        }
+
+        await this.clickUserCard(userName);
+    }
+
+    /**
+     * Verify a specific user's conversation is open
+     * @param {string} userName - Display name of the user whose chat should be open
+     */
+    async verifyUserChatOpen(userName) {
+        const frame = this.getChatFrame();
+        const chatHeader = frame.locator(`span.font-medium:has-text("${userName}"), h1:has-text("${userName}"), h2:has-text("${userName}"), h3:has-text("${userName}")`).first();
+        await expect(chatHeader).toBeVisible({ timeout: 15000 });
+    }
+
+    /**
      * Type a message in the chat input field
      * @param {string} message - The message to type
      */
     async typeMessage(message) {
-        const chatInput = this.page.locator(this.chatInput).first();
-        await chatInput.waitFor({ state: 'visible', timeout: 10000 });
-        await expect(chatInput).toBeEnabled({ timeout: 5000 });
-        await chatInput.fill(message);
+        const frame = this.getChatFrame();
+        const chatInput = frame.locator(this.chatInput).first();
+        const isInFrame = await chatInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+        const input = isInFrame
+            ? chatInput
+            : this.page.locator(this.chatInput).first();
+
+        await input.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(input).toBeEnabled({ timeout: 5000 });
+        await input.fill(message);
         await this.page.waitForTimeout(300);
     }
 
@@ -136,7 +243,14 @@ class ChatPage {
      * Click the send button to send the chat message
      */
     async clickSend() {
-        const sendBtn = this.page.locator(this.chatSendButton).first();
+        const frame = this.getChatFrame();
+        const frameSendBtn = frame.locator(this.chatSendButton).first();
+        const isInFrame = await frameSendBtn.isVisible({ timeout: 3000 }).catch(() => false);
+
+        const sendBtn = isInFrame
+            ? frameSendBtn
+            : this.page.locator(this.chatSendButton).first();
+
         await sendBtn.waitFor({ state: 'visible', timeout: 10000 });
         await expect(sendBtn).toBeEnabled({ timeout: 5000 });
         await sendBtn.click();

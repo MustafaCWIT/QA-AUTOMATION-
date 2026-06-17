@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { ChatPage } = require('../pages/ChatPage');
+const testData = require('../utils/test-data');
 
 // This test uses the saved session from auth.setup.js (storageState: '.auth/user.json')
 // No need to login again — the session is already authenticated.
@@ -24,5 +25,18 @@ test.describe('Chat - Open Chat from Welcome Page', () => {
 
         // Verify chat panel/window opened successfully
         await chatPage.verifyChatOpen();
+    });
+
+    test('should select a user from chat list and open their conversation', async ({ page }) => {
+        const chatPage = new ChatPage(page);
+        const { userName } = testData.chatData;
+
+        await chatPage.goto();
+        await chatPage.verifyOnWelcomePage();
+        await chatPage.clickChatIcon();
+        await chatPage.verifyChatOpen();
+
+        await chatPage.selectUser(userName);
+        await chatPage.verifyUserChatOpen(userName);
     });
 });

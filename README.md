@@ -12,3 +12,6 @@ npx playwright test tests/project-creation.spec.js -g "should create 100 tasks u
  npx playwright test tests/task-creation.spec.js -g "should create 100 tasks"
   npx playwright test tests/task-creation.spec.js -g "should create a new task with all details, checklist, and assignees"
   npx playwright test tests/ticket-creation.spec.js -g "should create a ticket with all required fields"    
+
+
+  npx playwright test tests/chat.spec.js -g "should select a user"
