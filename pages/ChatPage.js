@@ -121,13 +121,59 @@ class ChatPage {
     }
 
     /**
+     * Click on a specific user's chat from the list
+     * @param {string} userName - The name of the user to click (e.g., 'Faiqa Riaz')
+     */
+    async clickUserChat(userName) {
+        const frame = this.page.frameLocator('iframe').first();
+        // Look for a button containing the exact user name text
+        const userBtn = frame.locator('button').filter({ hasText: userName }).first();
+        
+        await userBtn.waitFor({ state: 'visible', timeout: 15000 });
+        await expect(userBtn).toBeEnabled({ timeout: 5000 });
+        
+        // Scroll into view if needed
+        await userBtn.scrollIntoViewIfNeeded();
+        
+        await userBtn.click();
+        
+        // Wait for chat to load
+        await this.page.waitForTimeout(1000);
+    }
+
+    /**
+     * Search for a user dynamically and then click on their chat
+     * @param {string} userName - The name of the user to search and select
+     */
+    async searchAndSelectUser(userName) {
+        const frame = this.page.frameLocator('iframe').first();
+        
+        // Locate the search input field
+        const searchInput = frame.locator('input[placeholder*="Search or start a new chat"]');
+        await searchInput.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(searchInput).toBeEnabled({ timeout: 5000 });
+        
+        // Clear and fill the search input with the username
+        await searchInput.clear();
+        await searchInput.fill(userName);
+        
+        // Wait a short moment for the search results to dynamically update/filter
+        await this.page.waitForTimeout(1000);
+        
+        // Now click on the user's chat from the filtered list
+        await this.clickUserChat(userName);
+    }
+
+    /**
      * Type a message in the chat input field
      * @param {string} message - The message to type
      */
     async typeMessage(message) {
-        const chatInput = this.page.locator(this.chatInput).first();
+        const frame = this.page.frameLocator('iframe').first();
+        const chatInput = frame.locator('textarea.mention-editor__input, textarea[placeholder="Type a message..."]').first();
         await chatInput.waitFor({ state: 'visible', timeout: 10000 });
         await expect(chatInput).toBeEnabled({ timeout: 5000 });
+        await chatInput.click();
         await chatInput.fill(message);
         await this.page.waitForTimeout(300);
     }
@@ -136,7 +182,9 @@ class ChatPage {
      * Click the send button to send the chat message
      */
     async clickSend() {
-        const sendBtn = this.page.locator(this.chatSendButton).first();
+        const frame = this.page.frameLocator('iframe').first();
+        // Uses the exact SVG path provided by the user
+        const sendBtn = frame.locator('button:has(svg path[d^="M14.536"])').first();
         await sendBtn.waitFor({ state: 'visible', timeout: 10000 });
         await expect(sendBtn).toBeEnabled({ timeout: 5000 });
         await sendBtn.click();
@@ -149,6 +197,35 @@ class ChatPage {
      */
     async sendMessage(message) {
         await this.typeMessage(message);
+        await this.clickSend();
+    }
+
+    /**
+     * Upload and send an image file in the chat
+     * @param {string} filePath - Path to the image file to upload
+     */
+    async sendImage(filePath) {
+        const frame = this.page.frameLocator('iframe').first();
+        
+        // 1. Click the attachment '+' button using the exact SVG path
+        const attachBtn = frame.locator('button:has(svg path[d^="M5 12h14"])').first();
+        await attachBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await attachBtn.click();
+        
+        // 2. Click 'Photo' option and intercept the file chooser
+        const photoBtn = frame.locator('button:has-text("Photo")').first();
+        
+        const fileChooserPromise = this.page.waitForEvent('filechooser');
+        await photoBtn.click();
+        const fileChooser = await fileChooserPromise;
+        
+        // 3. Select the file
+        await fileChooser.setFiles(filePath);
+        
+        // 4. Wait a little bit for the image to attach/preview before sending
+        await this.page.waitForTimeout(2000);
+        
+        // 5. Click the send button (reusing the existing clickSend method)
         await this.clickSend();
     }
 

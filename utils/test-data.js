@@ -8,8 +8,8 @@ module.exports = {
 
   credentials: {
     valid: {
-      email: process.env.TEST_EMAIL || 'ehu@maxenpower.com',
-      password: process.env.TEST_PASSWORD || 'maxen12345',
+      email: process.env.TEST_EMAIL || 'recovery@maxenpower.com',
+      password: process.env.TEST_PASSWORD || 'Maxen12345@',
     },
     invalid: {
       email: 'invalid@example.com',
@@ -47,7 +47,7 @@ module.exports = {
     reminderHours: '2',
   },
 
- 
+
   taskData: {
     title: 'E2E Test Task - Automated Playwright Test',
     description: 'This task was created by an automated Playwright test.',

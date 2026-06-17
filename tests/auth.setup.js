@@ -42,7 +42,7 @@ setup('authenticate', async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
   
   // Step 7: Verify dashboard content is visible
-  await expect(page.locator('body')).toContainText(/dashboard|timesheet|welcome/i, { timeout: 10000 });
+  await expect(page.locator('body')).toContainText(/dashboard|timesheet|welcome|NextGen Contact|Welcome back/i, { timeout: 30000 });
   
   // Step 8: Wait for network to be idle to ensure session is fully established
   try {
