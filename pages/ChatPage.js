@@ -33,29 +33,63 @@ class ChatPage {
         this.chatMessageBubble = '[data-message-id]';
         this.chatCloseButton = 'button:has-text("Close"), button[aria-label="Close"], button:has(svg.lucide-x)';
 
-        // Chat list (inside iframe) — search, filters, and user cards
+        // Chat list (inside iframe) — search, filters, and user/group cards
         this.chatSearchInput = 'input[placeholder="Search or start a new chat"]';
         this.chatRecentSection = 'div.uppercase:has-text("Recent")';
-        this.chatUserCardButton = 'button:has(span.font-medium):has(svg.lucide-user)';
+        this.chatStartNewChatSection = 'div.uppercase:has-text("Start new chat")';
+        // List rows: button.w-full — users use lucide-user, groups use lucide-users
+        this.chatListRowButton = 'button.w-full';
+        // Recent: span.font-medium | Search ("Start new chat"): p.font-medium > span.truncate
+        this.chatUserNameText = 'span.font-medium, p.font-medium span';
+        this.chatUserCardButton = `button.w-full:has(svg.lucide-user, svg.lucide-users):has(${this.chatUserNameText})`;
         this.chatFilterBar = '.overflow-x-auto.scrollbar-hide';
-        this.chatUserCard = (userName) => `button:has(span.font-medium:text("${userName}"))`;
     }
 
     /**
-     * Locate a visible user card button by display name inside the chat iframe.
-     * Scoped to chat rows (user icon) and filters out hidden duplicates still in the DOM.
+     * Locate a visible chat card (1:1 user or group) by display name.
+     * Recent / filtered list: button.w-full + svg.lucide-user/users + span.font-medium
+     * Search ("Start new chat"): button.w-full + svg.lucide-user + p.font-medium > span
      * @param {import('@playwright/test').FrameLocator} frame
-     * @param {string} userName
+     * @param {string} chatName
      */
-    getUserCardLocator(frame, userName) {
-        const namePattern = new RegExp(escapeRegExp(userName), 'i');
+    getUserCardLocator(frame, chatName) {
+        const exactName = new RegExp(`^${escapeRegExp(chatName)}$`, 'i');
+        const nameInLabel = new RegExp(escapeRegExp(chatName), 'i');
 
-        return frame
-            .locator('button:has(svg.lucide-user)')
+        const byDomStructure = frame
+            .locator(this.chatListRowButton)
             .filter({
-                has: frame.locator('span.font-medium', { hasText: namePattern }),
+                has: frame.locator(this.chatUserNameText, { hasText: exactName }),
             })
-            .filter({ visible: true });
+            .filter({
+                has: frame.locator('svg.lucide-user, svg.lucide-users'),
+            });
+
+        // Groups in filtered list include badges/timestamps in the accessible name (e.g. "… Admin 12:17 PM")
+        const byAccessibleName = frame
+            .getByRole('button', { name: nameInLabel })
+            .filter({ has: frame.getByText(exactName) });
+
+        return byDomStructure.or(byAccessibleName).filter({ visible: true });
+    }
+
+    /**
+     * Close the Profile side panel if it is covering the conversation list
+     */
+    async dismissProfilePanelIfOpen() {
+        const frame = this.getChatFrame();
+        const onProfile = await frame.getByText('Your name').isVisible({ timeout: 500 }).catch(() => false);
+        if (!onProfile) {
+            return;
+        }
+
+        const backButton = frame
+            .locator('div')
+            .filter({ has: frame.getByText('Profile', { exact: true }) })
+            .locator('button')
+            .first();
+        await backButton.click({ timeout: 5000 }).catch(() => {});
+        await this.page.waitForTimeout(300);
     }
 
     /**
@@ -168,6 +202,7 @@ class ChatPage {
     async waitForChatList({ requireRecent = false } = {}) {
         const frame = this.getChatFrame();
         await expect(frame.locator(this.chatSearchInput)).toBeVisible({ timeout: 15000 });
+        await this.dismissProfilePanelIfOpen();
 
         if (requireRecent) {
             await expect(frame.locator(this.chatRecentSection)).toBeVisible({ timeout: 15000 });
@@ -190,11 +225,14 @@ class ChatPage {
     }
 
     /**
-     * Wait for a user card matching the given name to appear in search/list results
-     * @param {string} userName - Display name (or partial match) on the user card
+     * Wait for a user/group card to appear after searching.
+     * New contacts show under "Start new chat"; existing chats/groups filter the conversation list.
+     * @param {string} userName - Display name on the card
      */
     async waitForSearchResults(userName) {
         const frame = this.getChatFrame();
+        await this.dismissProfilePanelIfOpen();
+
         const userCard = this.getUserCardLocator(frame, userName).first();
         await userCard.waitFor({ state: 'visible', timeout: 20000 });
         await userCard.scrollIntoViewIfNeeded();
@@ -221,6 +259,8 @@ class ChatPage {
      */
     async clickUserCard(userName) {
         const frame = this.getChatFrame();
+        await this.dismissProfilePanelIfOpen();
+
         const userCard = this.getUserCardLocator(frame, userName).first();
 
         await userCard.waitFor({ state: 'visible', timeout: 20000 });
@@ -272,17 +312,21 @@ class ChatPage {
         await this.waitForConversationView();
 
         const frame = this.getChatFrame();
-        const chatHeader = frame.locator(
-            `header span.font-medium:has-text("${userName}"), header span.font-semibold:has-text("${userName}"), h1:has-text("${userName}"), h2:has-text("${userName}"), h3:has-text("${userName}")`,
-        ).first();
-        const headerVisible = await chatHeader.isVisible({ timeout: 5000 }).catch(() => false);
+        const exactName = new RegExp(`^${escapeRegExp(userName)}$`, 'i');
+        const nameInHeader = frame
+            .locator('header')
+            .locator(this.chatUserNameText, { hasText: exactName })
+            .first();
+        const headerVisible = await nameInHeader.isVisible({ timeout: 5000 }).catch(() => false);
 
         if (headerVisible) {
-            await expect(chatHeader).toBeVisible({ timeout: 15000 });
+            await expect(nameInHeader).toBeVisible({ timeout: 15000 });
             return;
         }
 
-        await expect(frame.locator(`span.font-medium:has-text("${userName}")`).first()).toBeVisible({ timeout: 15000 });
+        await expect(
+            frame.locator(this.chatUserNameText, { hasText: exactName }).first(),
+        ).toBeVisible({ timeout: 15000 });
     }
 
     /**
