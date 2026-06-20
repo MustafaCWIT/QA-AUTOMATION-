@@ -26,7 +26,7 @@ module.exports = defineConfig({
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: 'http://46.62.211.210:4003',
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
+    /* Collect trace for failed tests. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
     screenshot: 'on',
     /* Record video for all tests - useful for debugging login issues */
@@ -35,9 +35,9 @@ module.exports = defineConfig({
       size: { width: 1280, height: 720 } // Standard HD resolution
     },
     /* Increase timeout for navigation and actions */
-   
+
   },
-  
+
   /* Global timeout for each test */
   timeout: 60000,
 
@@ -51,12 +51,12 @@ module.exports = defineConfig({
     },
     {
       name: 'chromium',
-      use: { 
+      use: {
         ...devices['Desktop Chrome'],
         // Auth setup disabled - tests handle their own login
         storageState: '.auth/user.json',
       },
-      dependencies: ['setup'], // Disabled - no longer runs auth.setup.js before tests
+      // dependencies: ['setup'], // Disabled - no longer runs auth.setup.js before tests
     },
 
     // Temporarily disabled - Firefox/WebKit installation issues

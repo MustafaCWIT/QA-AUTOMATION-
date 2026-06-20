@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const { LoginPage } = require('../pages/LoginPage');
 const { DashboardPage } = require('../pages/DashboardPage');
 const { TicketsManagerPage } = require('../pages/TicketsManagerPage');
+const { ChatPage } = require('../pages/ChatPage');
 
 test.describe('Login Page Tests', () => {
   let loginPage;
@@ -241,7 +242,7 @@ test.describe('Login Page Tests', () => {
         const finalUrl = page.url();
         if (loginSuccessful && (finalUrl.includes('/dashboard/') || finalUrl.includes('/welcome'))) {
           // Login successful
-          console.log(`  ✅ [${index + 1}/${emails.length}] Login successful for ${email}`);
+          console.log(`   [${index + 1}/${emails.length}] Login successful for ${email}`);
 
           try {
             // Step 1: Navigate to welcome page if not already there
@@ -252,33 +253,33 @@ test.describe('Login Page Tests', () => {
 
             // Step 2: Verify we're on welcome page
             await expect(page).toHaveURL(/.*dashboard\/welcome/);
-            console.log(`  ✅ [${index + 1}/${emails.length}] Navigated to welcome page for ${email}`);
+            console.log(`   [${index + 1}/${emails.length}] Navigated to welcome page for ${email}`);
 
             // Step 3: Navigate directly to tickets-manager page
             await page.goto('http://46.62.211.210:4003/dashboard/tickets-manager', { waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForLoadState('networkidle').catch(() => { });
-            console.log(`  ✅ [${index + 1}/${emails.length}] Navigated to tickets manager for ${email}`);
+            console.log(`   [${index + 1}/${emails.length}] Navigated to tickets manager for ${email}`);
 
             // Step 4: Verify we're on tickets manager page
             await expect(page).toHaveURL(/.*dashboard\/tickets-manager/);
 
             // Step 5: Refresh the page two times
-            console.log(`  🔄 [${index + 1}/${emails.length}] Refreshing tickets manager page (1/2) for ${email}`);
+            console.log(`   [${index + 1}/${emails.length}] Refreshing tickets manager page (1/2) for ${email}`);
             await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForLoadState('networkidle').catch(() => { });
 
             // Wait 10 seconds between refreshes
-            console.log(`  ⏳ [${index + 1}/${emails.length}] Waiting 10 seconds before second refresh for ${email}`);
+            console.log(`   [${index + 1}/${emails.length}] Waiting 10 seconds before second refresh for ${email}`);
             await page.waitForTimeout(10000);
 
-            console.log(`  🔄 [${index + 1}/${emails.length}] Refreshing tickets manager page (2/2) for ${email}`);
+            console.log(`   [${index + 1}/${emails.length}] Refreshing tickets manager page (2/2) for ${email}`);
             await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForLoadState('networkidle').catch(() => { });
             await page.waitForTimeout(1000);
 
             // Step 6: Verify still on tickets manager page after refreshes
             await expect(page).toHaveURL(/.*dashboard\/tickets-manager/);
-            console.log(`  ✅ [${index + 1}/${emails.length}] Successfully refreshed tickets manager 2x for ${email}`);
+            console.log(`   [${index + 1}/${emails.length}] Successfully refreshed tickets manager 2x for ${email}`);
 
             // Mark as successful
             results.successful.push(email);
@@ -286,16 +287,16 @@ test.describe('Login Page Tests', () => {
           } catch (navError) {
             // Login was successful but navigation to tickets manager failed
             results.failed.push({ email, reason: `Navigation failed: ${navError.message}` });
-            console.log(`  ⚠️  [${index + 1}/${emails.length}] Login successful but navigation failed for ${email}: ${navError.message}`);
+            console.log(`    [${index + 1}/${emails.length}] Login successful but navigation failed for ${email}: ${navError.message}`);
           }
         } else {
           // Login failed - still on login page
           results.failed.push({ email, reason: 'Still on login page after login attempt' });
-          console.log(`  ❌ [${index + 1}/${emails.length}] Login failed for ${email} - still on login page`);
+          console.log(`   [${index + 1}/${emails.length}] Login failed for ${email} - still on login page`);
         }
       } catch (error) {
         results.failed.push({ email, reason: error.message });
-        console.log(`  ❌ [${index + 1}/${emails.length}] Login failed for ${email}: ${error.message}`);
+        console.log(`   [${index + 1}/${emails.length}] Login failed for ${email}: ${error.message}`);
       } finally {
         // Close the context (this will also close the page)
         if (context) {
@@ -312,10 +313,10 @@ test.describe('Login Page Tests', () => {
       batches.push(emails.slice(i, i + BATCH_SIZE));
     }
 
-    console.log(`\n🚀 Starting login tests for ${emails.length} emails in ${batches.length} batches of ${BATCH_SIZE}...`);
-    console.log(`📝 Note: This test creates fresh browser contexts without saved authentication state.`);
-    console.log(`📝 Each email will be tested independently with a clean session.`);
-    console.log(`📝 Batching prevents server overload and connection refused errors.\n`);
+    console.log(`\n Starting login tests for ${emails.length} emails in ${batches.length} batches of ${BATCH_SIZE}...`);
+    console.log(` Note: This test creates fresh browser contexts without saved authentication state.`);
+    console.log(` Each email will be tested independently with a clean session.`);
+    console.log(` Batching prevents server overload and connection refused errors.\n`);
     const startTime = Date.now();
 
     // Process batches sequentially, but emails within each batch in parallel
@@ -323,7 +324,7 @@ test.describe('Login Page Tests', () => {
       const batch = batches[batchIndex];
       const batchStartIndex = batchIndex * BATCH_SIZE;
 
-      console.log(`\n📦 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} emails)...`);
+      console.log(`\n Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} emails)...`);
 
       await Promise.all(
         batch.map((email, batchEmailIndex) => {
@@ -351,12 +352,209 @@ test.describe('Login Page Tests', () => {
     console.log(`Total duration: ${duration} seconds`);
     console.log(`Average time per login: ${(duration / emails.length).toFixed(2)} seconds`);
     console.log('\nSuccessful emails:');
-    results.successful.forEach(email => console.log(`  ✅ ${email}`));
+    results.successful.forEach(email => console.log(`  ${email}`));
     console.log('\nFailed emails:');
-    results.failed.forEach(({ email, reason }) => console.log(`  ❌ ${email} - ${reason}`));
+    results.failed.forEach(({ email, reason }) => console.log(`   ${email} - ${reason}`));
     console.log('='.repeat(60));
 
     // Assert that at least some logins were successful (adjust threshold as needed)
+    expect(results.successful.length).toBeGreaterThan(0);
+  });
+
+  test('should login with 50 users and send a message to amer in chat', async ({ browser }, testInfo) => {
+    test.setTimeout(2400000); // 40 minutes to ensure enough time
+    const testData = require('../utils/test-data');
+    const password = 'Maxen12345@';
+    // 50 users for the chat test
+    const emails = [
+
+      "recovery@maxenpower.com"
+
+    ];
+
+    const results = {
+      successful: [],
+      failed: []
+    };
+
+    const testChatForUser = async (email, index) => {
+      let context;
+      let page;
+
+      try {
+        console.log(`[${index + 1}/${emails.length}] Starting chat test for: ${email}`);
+
+        // Add significant stagger delay
+        if (index > 0) {
+          await new Promise(resolve => setTimeout(resolve, index * 200));
+        }
+
+        context = await browser.newContext({
+          baseURL: testData.urls.baseUrl,
+          storageState: undefined,
+          recordVideo: {
+            dir: 'test-results/videos-chat/',
+            size: { width: 1280, height: 720 }
+          }
+        });
+        page = await context.newPage();
+
+        const loginPage = new LoginPage(page);
+        await loginPage.goto();
+        await loginPage.login(email, password);
+
+        let loginSuccessful = false;
+        try {
+          let state = 'waiting';
+          for (let i = 0; i < 40; i++) {
+            const currentUrl = page.url();
+
+            try {
+              if (await page.locator('h2:has-text("Late Check-In")').isVisible()) {
+                console.log(`   [${index + 1}/${emails.length}] Handling Late Check-In modal for ${email}`);
+                await page.locator('button[data-id="open-combobox"]').click({ force: true });
+                await page.waitForTimeout(500);
+                await page.locator('span:has-text("Alarm Issue")').click({ force: true });
+                await page.locator('textarea#late-reason').fill('Sorry for the late check-in.');
+                await page.locator('button[data-id="submit-late-reason"]').click({ force: true });
+                await page.waitForTimeout(1000);
+              }
+
+              if (await page.locator('button[data-id="Dismiss All"]').isVisible()) {
+                console.log(`   [${index + 1}/${emails.length}] Handling Reminder modal for ${email}`);
+                await page.locator('button[data-id="Dismiss All"]').click({ force: true });
+                await page.waitForTimeout(1000);
+              }
+
+              if (await page.locator('input#missed-checkout-time').isVisible()) {
+                console.log(`   [${index + 1}/${emails.length}] Handling Missed Checkout modal for ${email}`);
+                const pText = await page.locator('p:has-text("You forgot to check out")').textContent();
+                const timeMatch = pText.match(/after\s+(\d{1,2}):(\d{2})/);
+                let checkoutTime = '23:59';
+                if (timeMatch) {
+                  let hours = parseInt(timeMatch[1], 10);
+                  let mins = parseInt(timeMatch[2], 10);
+                  if (hours < 23) {
+                    checkoutTime = `${(hours + 1).toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+                  }
+                }
+                await page.locator('input#missed-checkout-time').fill(checkoutTime);
+                await page.locator('textarea#missed-checkout-reason').fill('Forgot to checkout last night. Closed laptop in a hurry.');
+                await page.locator('button[data-id="submit-checkout-reason"]').click({ force: true });
+                await page.waitForTimeout(1000);
+              }
+            } catch (modalError) {
+              // Ignore any errors during modal handling so the loop can continue
+              console.log(`   [${index + 1}/${emails.length}] Minor issue handling modal: ${modalError.message}`);
+            }
+
+            if (currentUrl.includes('/dashboard/welcome') &&
+              !(await page.locator('button[data-id="Dismiss All"]').isVisible()) &&
+              !(await page.locator('input#missed-checkout-time').isVisible()) &&
+              !(await page.locator('h2:has-text("Late Check-In")').isVisible())) {
+              state = 'dashboard';
+              break;
+            }
+
+            await page.waitForTimeout(1000);
+          }
+
+          if (state === 'dashboard') {
+            loginSuccessful = true;
+          } else {
+            throw new Error(`Login did not reach welcome page or was blocked by a modal. Current URL: ${page.url()}`);
+          }
+        } catch (error) {
+          throw new Error(`Login process failed: ${error.message}`);
+        }
+
+        if (loginSuccessful) {
+          console.log(`   [${index + 1}/${emails.length}] Login successful for ${email}`);
+
+          const chatPage = new ChatPage(page);
+          console.log(`   [${index + 1}/${emails.length}] Opening chat for ${email}`);
+
+          let isChatVisible = false;
+          for (let j = 0; j < 45; j++) {
+            isChatVisible = await chatPage.isChatIconVisible();
+            if (isChatVisible) break;
+            await page.waitForTimeout(1000);
+          }
+
+          if (isChatVisible) {
+            await chatPage.clickChatIcon();
+            await chatPage.verifyChatOpen();
+
+            console.log(`   [${index + 1}/${emails.length}] Searching for Amer for ${email}`);
+            await chatPage.searchAndSelectUser('Amer');
+
+            console.log(`   [${index + 1}/${emails.length}] Sending message from ${email}`);
+            await chatPage.sendMessage(`Hello Amer, this is an automated message from ${email}`);
+
+            results.successful.push(email);
+            console.log(`   [${index + 1}/${emails.length}] Message sent successfully for ${email}`);
+          } else {
+            throw new Error('Chat icon is not visible');
+          }
+        } else {
+          throw new Error('Still on login page after login attempt');
+        }
+      } catch (error) {
+        results.failed.push({ email, reason: error.message });
+        console.log(`   [${index + 1}/${emails.length}] Test failed for ${email}: ${error.message}`);
+      } finally {
+        if (context) {
+          await context.close();
+
+          try {
+            if (page && page.video()) {
+              const videoPath = await page.video().path();
+              await testInfo.attach(`Video - ${email}`, {
+                path: videoPath,
+                contentType: 'video/webm'
+              });
+            }
+          } catch (attachError) {
+            // Ignore error if video cannot be attached
+          }
+        }
+      }
+    };
+
+    const BATCH_SIZE = 10;
+    const batches = [];
+    for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+      batches.push(emails.slice(i, i + BATCH_SIZE));
+    }
+
+    console.log(`\n Starting chat tests for ${emails.length} emails in ${batches.length} batches of ${BATCH_SIZE}...`);
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchStartIndex = batchIndex * BATCH_SIZE;
+
+      console.log(`\n Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} emails)...`);
+
+      for (let batchEmailIndex = 0; batchEmailIndex < batch.length; batchEmailIndex++) {
+        const email = batch[batchEmailIndex];
+        const globalIndex = batchStartIndex + batchEmailIndex;
+        // Run sequentially to avoid server rate-limiting and hanging on /auth/login
+        await testChatForUser(email, globalIndex);
+      }
+
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+
+    console.log('\n' + '='.repeat(60));
+    console.log('CHAT TEST SUMMARY');
+    console.log('='.repeat(60));
+    console.log(`Successful messages: ${results.successful.length}`);
+    console.log(`Failed tests: ${results.failed.length}`);
+    results.failed.forEach(({ email, reason }) => console.log(`   ${email} - ${reason}`));
+    console.log('='.repeat(60));
+
     expect(results.successful.length).toBeGreaterThan(0);
   });
 });

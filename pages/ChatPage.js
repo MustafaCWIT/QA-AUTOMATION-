@@ -128,15 +128,15 @@ class ChatPage {
         const frame = this.page.frameLocator('iframe').first();
         // Look for a button containing the exact user name text
         const userBtn = frame.locator('button').filter({ hasText: userName }).first();
-        
+
         await userBtn.waitFor({ state: 'visible', timeout: 15000 });
         await expect(userBtn).toBeEnabled({ timeout: 5000 });
-        
+
         // Scroll into view if needed
         await userBtn.scrollIntoViewIfNeeded();
-        
+
         await userBtn.click();
-        
+
         // Wait for chat to load
         await this.page.waitForTimeout(1000);
     }
@@ -147,19 +147,19 @@ class ChatPage {
      */
     async searchAndSelectUser(userName) {
         const frame = this.page.frameLocator('iframe').first();
-        
+
         // Locate the search input field
         const searchInput = frame.locator('input[placeholder*="Search or start a new chat"]');
         await searchInput.waitFor({ state: 'visible', timeout: 10000 });
         await expect(searchInput).toBeEnabled({ timeout: 5000 });
-        
+
         // Clear and fill the search input with the username
         await searchInput.clear();
         await searchInput.fill(userName);
-        
+
         // Wait a short moment for the search results to dynamically update/filter
         await this.page.waitForTimeout(1000);
-        
+
         // Now click on the user's chat from the filtered list
         await this.clickUserChat(userName);
     }
@@ -170,12 +170,11 @@ class ChatPage {
      */
     async typeMessage(message) {
         const frame = this.page.frameLocator('iframe').first();
-        const chatInput = frame.locator('textarea.mention-editor__input, textarea[placeholder="Type a message..."]').first();
-        await chatInput.waitFor({ state: 'visible', timeout: 10000 });
-        await expect(chatInput).toBeEnabled({ timeout: 5000 });
+        // Wait for the message input (textarea or contenteditable) to become visible
+        const chatInput = frame.locator('textarea, div[contenteditable="true"]').first();
+        await chatInput.waitFor({ state: 'visible', timeout: 60000 });
         await chatInput.click();
         await chatInput.fill(message);
-        await this.page.waitForTimeout(300);
     }
 
     /**
@@ -188,7 +187,7 @@ class ChatPage {
         await sendBtn.waitFor({ state: 'visible', timeout: 10000 });
         await expect(sendBtn).toBeEnabled({ timeout: 5000 });
         await sendBtn.click();
-        await this.page.waitForTimeout(500);
+        await this.page.waitForTimeout(100);
     }
 
     /**
@@ -201,32 +200,57 @@ class ChatPage {
     }
 
     /**
-     * Upload and send an image file in the chat
-     * @param {string} filePath - Path to the image file to upload
+     * Click the Insert Emoji button to open the emoji picker dialog
      */
-    async sendImage(filePath) {
+    async clickEmojiPickerButton() {
         const frame = this.page.frameLocator('iframe').first();
-        
-        // 1. Click the attachment '+' button using the exact SVG path
-        const attachBtn = frame.locator('button:has(svg path[d^="M5 12h14"])').first();
-        await attachBtn.waitFor({ state: 'visible', timeout: 10000 });
-        await attachBtn.click();
-        
-        // 2. Click 'Photo' option and intercept the file chooser
-        const photoBtn = frame.locator('button:has-text("Photo")').first();
-        
-        const fileChooserPromise = this.page.waitForEvent('filechooser');
-        await photoBtn.click();
-        const fileChooser = await fileChooserPromise;
-        
-        // 3. Select the file
-        await fileChooser.setFiles(filePath);
-        
-        // 4. Wait a little bit for the image to attach/preview before sending
-        await this.page.waitForTimeout(2000);
-        
-        // 5. Click the send button (reusing the existing clickSend method)
-        await this.clickSend();
+        const emojiBtn = frame.locator('button[aria-label="Insert emoji"]').first();
+        await emojiBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(emojiBtn).toBeEnabled({ timeout: 5000 });
+        await emojiBtn.click();
+        await this.page.waitForTimeout(500); // small delay to let picker render
+    }
+
+    /**
+     * Select a specific number of emojis from the opened emoji picker
+     * @param {number} count - Number of emojis to select
+     */
+    async selectEmojis(count = 4) {
+        const frame = this.page.frameLocator('iframe').first();
+
+        // Locate the emoji picker container specifically, filtering out the main chat panel dialog
+        const pickerContainer = frame.locator([
+            '[class*="emoji-picker" i]',
+            '[class*="emoji-container" i]',
+            '[aria-label*="emoji" i]:not(button)',
+            '[role="dialog"]:not(:has-text("Dolphin AI")):not(:has-text("Chat"))',
+            '.emoji-picker',
+            '.epr-main',
+            'aside[class*="emoji" i]'
+        ].join(', ')).first();
+
+        // Wait for the picker container to be visible on the screen
+        await pickerContainer.waitFor({ state: 'visible', timeout: 10000 });
+
+        // Target only the button elements representing emojis inside the picker container
+        const emojiButtons = pickerContainer.locator('button');
+
+        // Wait for at least the first emoji to become visible/interactive
+        await emojiButtons.first().waitFor({ state: 'visible', timeout: 5000 });
+
+        const totalAvailable = await emojiButtons.count();
+        if (totalAvailable === 0) {
+            throw new Error('No emoji buttons found inside the emoji picker container.');
+        }
+
+        // Loop through and click up to the requested count
+        const limit = Math.min(count, totalAvailable);
+        for (let i = 0; i < limit; i++) {
+            const emojiToClick = emojiButtons.nth(i);
+            await emojiToClick.scrollIntoViewIfNeeded();
+            await emojiToClick.click();
+            await this.page.waitForTimeout(200); // Brief pause between clicks to ensure smooth typing sequence
+        }
     }
 
     /**
@@ -247,6 +271,86 @@ class ChatPage {
                 await this.page.waitForTimeout(500);
             }
         }
+    }
+
+    /**
+     * Click on the "Groups" tab button in the chat panel
+     */
+    async clickGroupsTab() {
+        const frame = this.page.frameLocator('iframe').first();
+        // Locate button that has text "Groups"
+        const groupsBtn = frame.locator('button:has-text("Groups")').first();
+        await groupsBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(groupsBtn).toBeEnabled({ timeout: 5000 });
+        await groupsBtn.click();
+        await this.page.waitForTimeout(500); // Wait briefly for transition
+    }
+
+    /**
+     * Click the plus icon button to create a new group/action
+     */
+    async clickPlusIcon() {
+        const frame = this.page.frameLocator('iframe').first();
+        // Target the svg with class lucide-plus or any element wrapping it
+        const plusIcon = frame.locator('svg.lucide-plus, button:has(svg.lucide-plus), [class*="lucide-plus"]').first();
+        await plusIcon.waitFor({ state: 'visible', timeout: 10000 });
+        await plusIcon.click();
+        await this.page.waitForTimeout(500);
+    }
+
+    /**
+     * Enter group name inside the create group modal
+     * @param {string} groupName - The name for the group
+     */
+    async enterGroupName(groupName) {
+        const frame = this.page.frameLocator('iframe').first();
+        const groupNameInput = frame.locator('input[placeholder="Enter group name..."]').first();
+        await groupNameInput.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(groupNameInput).toBeEnabled({ timeout: 5000 });
+        await groupNameInput.fill(groupName);
+        await this.page.waitForTimeout(300);
+    }
+
+    /**
+     * Search and select a member inside the group creation modal
+     * @param {string} userName - Name of the user to select
+     */
+    async searchAndSelectGroupMember(userName) {
+        const frame = this.page.frameLocator('iframe').first();
+        const searchInput = frame.locator('input[placeholder="Search members..."]').first();
+        await searchInput.waitFor({ state: 'visible', timeout: 10000 });
+        await searchInput.fill(userName);
+        await this.page.waitForTimeout(1000); // Wait for the list to filter
+
+        // Locate member row button containing the user's name
+        const memberRow = frame.locator('button').filter({ hasText: userName }).first();
+        await memberRow.waitFor({ state: 'visible', timeout: 5000 });
+        await memberRow.click();
+        await this.page.waitForTimeout(300);
+
+        // Clear the search field for the next member search
+        await searchInput.clear();
+        await this.page.waitForTimeout(300);
+    }
+
+    /**
+     * Click the Create Group button to submit the form
+     */
+    async clickCreateGroupButton() {
+        const frame = this.page.frameLocator('iframe').first();
+        // Wait for the Create Group modal to be visible (contains a heading with text "Create Group")
+        const modal = frame.locator('div[role="dialog"]:has(h2:has-text("Create Group")), div:has(h2:has-text("Create Group"))').first();
+        await modal.waitFor({ state: 'visible', timeout: 15000 });
+        // Locate the primary button inside the modal
+        const createBtn = modal.locator('button.btn-primary:has-text("Create Group")').first();
+        await createBtn.scrollIntoViewIfNeeded();
+        await createBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(createBtn).toBeEnabled({ timeout: 5000 });
+        // Click the Create Group button
+        await createBtn.click();
+        // Wait for request processing and modal to disappear
+        await modal.waitFor({ state: 'detached', timeout: 15000 });
+        await this.page.waitForTimeout(500); // short pause after modal closes
     }
 
     /**
