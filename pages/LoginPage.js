@@ -292,22 +292,107 @@ class LoginPage {
   }
 
   /**
-   * Wait for successful login redirect to dashboard
-   * @param {string} expectedUrl - Expected URL after login (default: dashboard/welcome)
+   * Clear any existing server session before logging in
    */
-  async waitForLoginSuccess(expectedUrl = '/dashboard/welcome') {
-    // Wait for either navigation to dashboard OR error message to appear
+  async clearExistingSession() {
+    await this.page.goto('/api/auth/signout', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    const signOutButton = this.page.locator('button:has-text("Sign out"), form button[type="submit"]');
+    if (await signOutButton.first().isVisible().catch(() => false)) {
+      await signOutButton.first().click({ force: true }).catch(() => {});
+      await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+    }
+  }
+
+  /**
+   * Check for the "active session already exists" login error
+   */
+  async hasActiveSessionError() {
+    return this.page.locator('text=Active session already exists').isVisible().catch(() => false);
+  }
+
+  /**
+   * Dismiss post-login modals that block the welcome dashboard
+   */
+  async handlePostLoginModals() {
+    const page = this.page;
+
     try {
-      await this.page.waitForURL(`**${expectedUrl}`, { timeout: 10000 });
-    } catch (error) {
-      // If navigation didn't happen, check for error message
+      if (await page.locator('h2:has-text("Late Check-In")').isVisible()) {
+        await page.locator('button[data-id="open-combobox"]').click({ force: true });
+        await page.waitForTimeout(500);
+        await page.locator('span:has-text("Alarm Issue")').click({ force: true });
+        await page.locator('textarea#late-reason').fill('Sorry for the late check-in.');
+        await page.locator('button[data-id="submit-late-reason"]').click({ force: true });
+        await page.waitForTimeout(1000);
+      }
+
+      if (await page.locator('button[data-id="Dismiss All"]').isVisible()) {
+        await page.locator('button[data-id="Dismiss All"]').click({ force: true });
+        await page.waitForTimeout(1000);
+      }
+
+      if (await page.locator('input#missed-checkout-time').isVisible()) {
+        const pText = await page.locator('p:has-text("You forgot to check out")').textContent();
+        const timeMatch = pText.match(/after\s+(\d{1,2}):(\d{2})/);
+        let checkoutTime = '23:59';
+        if (timeMatch) {
+          const hours = parseInt(timeMatch[1], 10);
+          const mins = parseInt(timeMatch[2], 10);
+          if (hours < 23) {
+            checkoutTime = `${(hours + 1).toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+          }
+        }
+        await page.locator('input#missed-checkout-time').fill(checkoutTime);
+        await page.locator('textarea#missed-checkout-reason').fill('Forgot to checkout last night. Closed laptop in a hurry.');
+        await page.locator('button[data-id="submit-checkout-reason"]').click({ force: true });
+        await page.waitForTimeout(1000);
+      }
+    } catch {
+      // Ignore transient modal errors so the wait loop can continue
+    }
+  }
+
+  async hasBlockingPostLoginModal() {
+    const page = this.page;
+    return (
+      (await page.locator('button[data-id="Dismiss All"]').isVisible().catch(() => false)) ||
+      (await page.locator('input#missed-checkout-time').isVisible().catch(() => false)) ||
+      (await page.locator('h2:has-text("Late Check-In")').isVisible().catch(() => false))
+    );
+  }
+
+  /**
+   * Wait for successful login redirect to dashboard, dismissing blocking modals
+   * @param {string} expectedUrl - Expected URL after login (default: dashboard/welcome)
+   * @param {object} options - { timeout: number }
+   */
+  async waitForLoginSuccess(expectedUrl = '/dashboard/welcome', options = {}) {
+    const timeout = options.timeout ?? 60000;
+    const deadline = Date.now() + timeout;
+
+    while (Date.now() < deadline) {
+      if (await this.hasActiveSessionError()) {
+        throw new Error('ACTIVE_SESSION_EXISTS');
+      }
+
+      await this.handlePostLoginModals();
+
+      const currentUrl = this.page.url();
+      if (currentUrl.includes(expectedUrl) && !(await this.hasBlockingPostLoginModal())) {
+        return;
+      }
+
       const errorMessage = await this.getErrorMessage();
-      if (errorMessage) {
+      if (errorMessage && currentUrl.includes('/auth/login')) {
         throw new Error(`Login failed: ${errorMessage}`);
       }
-      // Re-throw original timeout error if no error message found
-      throw new Error(`Login did not redirect to ${expectedUrl} within timeout. Current URL: ${this.page.url()}`);
+
+      await this.page.waitForTimeout(1000);
     }
+
+    throw new Error(
+      `Login did not reach ${expectedUrl} within ${timeout}ms. Current URL: ${this.page.url()}`
+    );
   }
 }
 

@@ -43,6 +43,14 @@ class ChatPage {
         this.chatUserNameText = 'span.font-medium, p.font-medium span';
         this.chatUserCardButton = `button.w-full:has(svg.lucide-user, svg.lucide-users):has(${this.chatUserNameText})`;
         this.chatFilterBar = '.overflow-x-auto.scrollbar-hide';
+
+        // Group creation (inside iframe)
+        this.groupNameInput = 'input[placeholder="Enter group name..."]';
+        this.groupMemberSearchInput = 'input[placeholder="Search members..."]';
+        this.groupMemberList = 'div.max-h-52.overflow-y-auto button.w-full';
+        this.createGroupModal = 'div[role="dialog"]:has(h2:has-text("Create Group")), div:has(h2:has-text("Create Group"))';
+        this.createGroupButton = 'button.btn-primary:has-text("Create Group")';
+        this.plusIcon = 'svg.lucide-plus, button:has(svg.lucide-plus), [class*="lucide-plus"]';
     }
 
     /**
@@ -400,6 +408,97 @@ class ChatPage {
             has: frame.locator('.whitespace-pre-wrap', { hasText: message }),
         }).last();
         await expect(messageBubble).toBeVisible({ timeout: 15000 });
+    }
+
+    /**
+     * Click on the "Groups" tab button in the chat panel
+     */
+    async clickGroupsTab() {
+        const frame = this.getChatFrame();
+        const groupsBtn = frame.locator('button:has-text("Groups")').first();
+        await groupsBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(groupsBtn).toBeEnabled({ timeout: 5000 });
+        await groupsBtn.click();
+        await this.page.waitForTimeout(500);
+    }
+
+    /**
+     * Click the plus icon button to create a new group
+     */
+    async clickPlusIcon() {
+        const frame = this.getChatFrame();
+        const plusIcon = frame.locator(this.plusIcon).first();
+        await plusIcon.waitFor({ state: 'visible', timeout: 10000 });
+        await plusIcon.click();
+        await this.page.waitForTimeout(500);
+    }
+
+    /**
+     * Enter group name inside the create group modal
+     * @param {string} groupName - The name for the group
+     */
+    async enterGroupName(groupName) {
+        const frame = this.getChatFrame();
+        const groupNameInput = frame.locator(this.groupNameInput).first();
+        await groupNameInput.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(groupNameInput).toBeEnabled({ timeout: 5000 });
+        await groupNameInput.fill(groupName);
+        await this.page.waitForTimeout(300);
+    }
+
+    /**
+     * Search and select a member inside the group creation modal
+     * @param {string} userName - Name of the user to select
+     */
+    async searchAndSelectGroupMember(userName) {
+        const frame = this.getChatFrame();
+        const searchInput = frame.locator(this.groupMemberSearchInput).first();
+        await searchInput.waitFor({ state: 'visible', timeout: 10000 });
+        await searchInput.fill(userName);
+        await this.page.waitForTimeout(1000);
+
+        const memberRow = frame.locator('button').filter({ hasText: userName }).first();
+        await memberRow.waitFor({ state: 'visible', timeout: 5000 });
+        await memberRow.click();
+        await this.page.waitForTimeout(300);
+
+        await searchInput.clear();
+        await this.page.waitForTimeout(300);
+    }
+
+    /**
+     * Select members from the scrollable list in the create group modal
+     * @param {number} count - How many members to select
+     */
+    async selectGroupMembersFromList(count) {
+        const frame = this.getChatFrame();
+        const memberButtons = frame.locator(this.groupMemberList);
+        const total = await memberButtons.count();
+        const limit = Math.min(count, total);
+
+        for (let i = 0; i < limit; i++) {
+            const btn = memberButtons.nth(i);
+            await btn.scrollIntoViewIfNeeded();
+            await btn.click();
+            await this.page.waitForTimeout(100);
+        }
+    }
+
+    /**
+     * Click the Create Group button to submit the form
+     */
+    async clickCreateGroupButton() {
+        const frame = this.getChatFrame();
+        const modal = frame.locator(this.createGroupModal).first();
+        await modal.waitFor({ state: 'visible', timeout: 15000 });
+
+        const createBtn = modal.locator(this.createGroupButton).first();
+        await createBtn.scrollIntoViewIfNeeded();
+        await createBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(createBtn).toBeEnabled({ timeout: 5000 });
+        await createBtn.click();
+        await modal.waitFor({ state: 'detached', timeout: 15000 });
+        await this.page.waitForTimeout(500);
     }
 
     /**

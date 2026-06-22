@@ -60,4 +60,62 @@ test.describe('Chat - Open Chat from Welcome Page', () => {
         await chatPage.sendBulkMessages(bulkMessageCount);
         await chatPage.verifyMessageSent(String(bulkMessageCount));
     });
+
+    test('should create 50 groups each with 50 members', async ({ page }) => {
+        test.setTimeout(600000);
+
+        const totalGroups = 50;
+        const membersPerGroup = 50;
+        const chatPage = new ChatPage(page);
+
+        console.log('\n========================================');
+        console.log('GROUP CREATION TEST — START');
+        console.log(`Plan: create ${totalGroups} groups with ${membersPerGroup} members each`);
+        console.log('========================================\n');
+
+        console.log('[1/4] Navigating to welcome page...');
+        await chatPage.goto();
+        await chatPage.verifyOnWelcomePage();
+        console.log('      Welcome page loaded.\n');
+
+        console.log('[2/4] Opening chat panel...');
+        const isChatVisible = await chatPage.isChatIconVisible();
+        expect(isChatVisible).toBeTruthy();
+        await chatPage.clickChatIcon();
+        await chatPage.verifyChatOpen();
+        console.log('      Chat panel is open.\n');
+
+        console.log('[3/4] Switching to Groups tab...');
+        await chatPage.clickGroupsTab();
+        console.log('      Groups tab selected.\n');
+
+        console.log(`[4/4] Creating ${totalGroups} groups (selecting ${membersPerGroup} members per group)...\n`);
+
+        for (let g = 0; g < totalGroups; g++) {
+            const groupNumber = g + 1;
+            const groupName = `AutoGroup_${groupNumber}_${Date.now()}`;
+
+            console.log(`--- Group ${groupNumber}/${totalGroups} ---`);
+            console.log(`  Step 1: Click + icon to open create group modal`);
+            await chatPage.clickPlusIcon();
+
+            console.log(`  Step 2: Enter group name → "${groupName}"`);
+            await chatPage.enterGroupName(groupName);
+
+            console.log(`  Step 3: Select up to ${membersPerGroup} members from the list`);
+            await chatPage.selectGroupMembersFromList(membersPerGroup);
+
+            console.log(`  Step 4: Click "Create Group" and wait for modal to close`);
+            await chatPage.clickCreateGroupButton();
+
+            console.log(`  ✓ Group ${groupNumber}/${totalGroups} created: ${groupName}\n`);
+
+            await page.waitForTimeout(500);
+        }
+
+        console.log('========================================');
+        console.log('GROUP CREATION TEST — COMPLETE');
+        console.log(`Created ${totalGroups} groups with up to ${membersPerGroup} members each`);
+        console.log('========================================\n');
+    });
 });

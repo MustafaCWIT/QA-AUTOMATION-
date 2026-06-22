@@ -26,3 +26,4 @@ npx playwright test tests/chat.spec.js -g "bulk numbered"
 $env:CHAT_USER_SEARCH="Aamir"; $env:CHAT_USER_NAME="Aamir Mir (M)"; $env:CHAT_BULK_COUNT="200"; npx playwright test tests/chat.spec.js -g "bulk numbered"
 
 $env:CHAT_BULK_COUNT="5"; npx playwright test tests/chat.spec.js -g "bulk numbered"
+npx playwright test tests/chat.spec.js -g "create 50 groups"
