@@ -27,3 +27,5 @@ $env:CHAT_USER_SEARCH="Aamir"; $env:CHAT_USER_NAME="Aamir Mir (M)"; $env:CHAT_BU
 
 $env:CHAT_BULK_COUNT="5"; npx playwright test tests/chat.spec.js -g "bulk numbered"
 npx playwright test tests/chat.spec.js -g "create 50 groups"
+
+ npx playwright test -g "should navigate to ticket replies and click the first ticket"

@@ -41,7 +41,6 @@ async function tryReuseSavedSession(browser) {
 
     await verifyWelcomeDashboard(page, loginPage);
     await saveSession(context);
-    console.log(`✅ [SETUP] Reused existing session for ${testData.credentials.valid.email}`);
     return true;
   } catch {
     return false;
@@ -73,9 +72,16 @@ async function signOutSavedSession(browser) {
 setup('authenticate', async ({ browser }) => {
   setup.setTimeout(120000);
 
+  const log = (message) => console.log(message);
+
+  log('[SETUP] Checking for existing saved session...');
+
   if (await tryReuseSavedSession(browser)) {
+    log(`[SETUP] Reused existing session for ${testData.credentials.valid.email}`);
     return;
   }
+
+  log(`[SETUP] Logging in as ${testData.credentials.valid.email}...`);
 
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -110,7 +116,7 @@ setup('authenticate', async ({ browser }) => {
       if (error.message !== 'ACTIVE_SESSION_EXISTS' || attempt === 2) {
         throw error;
       }
-      console.log('⚠️ [SETUP] Active session detected, retrying after sign-out/wait...');
+      log('[SETUP] Active session detected, retrying after sign-out/wait...');
     }
   }
 
@@ -123,5 +129,5 @@ setup('authenticate', async ({ browser }) => {
   await saveSession(context);
   await context.close();
 
-  console.log(`✅ [SETUP] Authentication successful for ${testData.credentials.valid.email} - session saved to ${authFile}`);
+  log(`[SETUP] Authentication successful for ${testData.credentials.valid.email} - session saved to ${authFile}`);
 });
