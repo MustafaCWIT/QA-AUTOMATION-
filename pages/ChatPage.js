@@ -1,6 +1,14 @@
 const { expect } = require('@playwright/test');
 
 /**
+ * Escape special regex characters in user display names (e.g. "Aamir Mir (M)")
+ * @param {string} value
+ */
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Chat Page Object Model
  * Contains all selectors and methods for the chat widget on the welcome/dashboard page.
  * The chat icon (message-circle-plus) appears at the bottom-right corner of the page.
@@ -19,10 +27,85 @@ class ChatPage {
 
         // Chat panel/window selectors (common patterns for chat widgets)
         this.chatPanel = '[data-id="chat-panel"], [data-id="chat-window"], [role="dialog"]:has-text("Chat"), .chat-panel, .chat-window';
-        this.chatInput = 'textarea[placeholder*="message" i], input[placeholder*="message" i], textarea[placeholder*="type" i], input[placeholder*="type" i], [data-id="chat-input"]';
-        this.chatSendButton = 'button:has-text("Send"), button[data-id="send-message"], button[type="submit"]:has(svg)';
+        this.chatMessageInput = 'textarea.mention-editor__input, textarea[placeholder="Type a message..."]';
+        this.chatSendButton = 'button.btn-primary:has(svg.lucide-send), button:has(svg.lucide-send)';
+        this.chatConversationArea = 'div.chat-bg-pattern';
+        this.chatMessageBubble = '[data-message-id]';
         this.chatCloseButton = 'button:has-text("Close"), button[aria-label="Close"], button:has(svg.lucide-x)';
-        this.chatMessages = '.chat-messages, .messages-container, [data-id="chat-messages"]';
+
+        // Chat list (inside iframe) — search, filters, and user/group cards
+        this.chatSearchInput = 'input[placeholder="Search or start a new chat"]';
+        this.chatRecentSection = 'div.uppercase:has-text("Recent")';
+        this.chatStartNewChatSection = 'div.uppercase:has-text("Start new chat")';
+        // List rows: button.w-full — users use lucide-user, groups use lucide-users
+        this.chatListRowButton = 'button.w-full';
+        // Recent: span.font-medium | Search ("Start new chat"): p.font-medium > span.truncate
+        this.chatUserNameText = 'span.font-medium, p.font-medium span';
+        this.chatUserCardButton = `button.w-full:has(svg.lucide-user, svg.lucide-users):has(${this.chatUserNameText})`;
+        this.chatFilterBar = '.overflow-x-auto.scrollbar-hide';
+
+        // Group creation (inside iframe)
+        this.groupNameInput = 'input[placeholder="Enter group name..."]';
+        this.groupMemberSearchInput = 'input[placeholder="Search members..."]';
+        this.groupMemberList = 'div.max-h-52.overflow-y-auto button.w-full';
+        this.createGroupModal = 'div[role="dialog"]:has(h2:has-text("Create Group")), div:has(h2:has-text("Create Group"))';
+        this.createGroupButton = 'button.btn-primary:has-text("Create Group")';
+        this.plusIcon = 'svg.lucide-plus, button:has(svg.lucide-plus), [class*="lucide-plus"]';
+    }
+
+    /**
+     * Locate a visible chat card (1:1 user or group) by display name.
+     * Recent / filtered list: button.w-full + svg.lucide-user/users + span.font-medium
+     * Search ("Start new chat"): button.w-full + svg.lucide-user + p.font-medium > span
+     * @param {import('@playwright/test').FrameLocator} frame
+     * @param {string} chatName
+     */
+    getUserCardLocator(frame, chatName) {
+        const exactName = new RegExp(`^${escapeRegExp(chatName)}$`, 'i');
+        const nameInLabel = new RegExp(escapeRegExp(chatName), 'i');
+
+        const byDomStructure = frame
+            .locator(this.chatListRowButton)
+            .filter({
+                has: frame.locator(this.chatUserNameText, { hasText: exactName }),
+            })
+            .filter({
+                has: frame.locator('svg.lucide-user, svg.lucide-users'),
+            });
+
+        // Groups in filtered list include badges/timestamps in the accessible name (e.g. "… Admin 12:17 PM")
+        const byAccessibleName = frame
+            .getByRole('button', { name: nameInLabel })
+            .filter({ has: frame.getByText(exactName) });
+
+        return byDomStructure.or(byAccessibleName).filter({ visible: true });
+    }
+
+    /**
+     * Close the Profile side panel if it is covering the conversation list
+     */
+    async dismissProfilePanelIfOpen() {
+        const frame = this.getChatFrame();
+        const onProfile = await frame.getByText('Your name').isVisible({ timeout: 500 }).catch(() => false);
+        if (!onProfile) {
+            return;
+        }
+
+        const backButton = frame
+            .locator('div')
+            .filter({ has: frame.getByText('Profile', { exact: true }) })
+            .locator('button')
+            .first();
+        await backButton.click({ timeout: 5000 }).catch(() => {});
+        await this.page.waitForTimeout(300);
+    }
+
+    /**
+     * Get the chat iframe frameLocator (chat UI loads inside an iframe)
+     * @returns {import('@playwright/test').FrameLocator}
+     */
+    getChatFrame() {
+        return this.page.frameLocator('iframe').first();
     }
 
     /**
@@ -121,22 +204,166 @@ class ChatPage {
     }
 
     /**
-     * Type a message in the chat input field
-     * @param {string} message - The message to type
+     * Wait for the chat list screen to be ready (search bar visible)
+     * @param {{ requireRecent?: boolean }} [options] - When true, also wait for Recent section + user cards
      */
-    async typeMessage(message) {
-        const chatInput = this.page.locator(this.chatInput).first();
-        await chatInput.waitFor({ state: 'visible', timeout: 10000 });
-        await expect(chatInput).toBeEnabled({ timeout: 5000 });
-        await chatInput.fill(message);
-        await this.page.waitForTimeout(300);
+    async waitForChatList({ requireRecent = false } = {}) {
+        const frame = this.getChatFrame();
+        await expect(frame.locator(this.chatSearchInput)).toBeVisible({ timeout: 15000 });
+        await this.dismissProfilePanelIfOpen();
+
+        if (requireRecent) {
+            await expect(frame.locator(this.chatRecentSection)).toBeVisible({ timeout: 15000 });
+            await expect(frame.locator(this.chatUserCardButton).first()).toBeVisible({ timeout: 15000 });
+        }
     }
 
     /**
-     * Click the send button to send the chat message
+     * Search for a user or chat in the search bar
+     * @param {string} searchText - Text to search for
+     */
+    async searchChat(searchText) {
+        const frame = this.getChatFrame();
+        const searchInput = frame.locator(this.chatSearchInput);
+        await searchInput.waitFor({ state: 'visible', timeout: 10000 });
+        await searchInput.click();
+        await searchInput.fill('');
+        await searchInput.pressSequentially(searchText, { delay: 30 });
+        await this.page.waitForTimeout(1200);
+    }
+
+    /**
+     * Wait for a user/group card to appear after searching.
+     * New contacts show under "Start new chat"; existing chats/groups filter the conversation list.
+     * @param {string} userName - Display name on the card
+     */
+    async waitForSearchResults(userName) {
+        const frame = this.getChatFrame();
+        await this.dismissProfilePanelIfOpen();
+
+        const userCard = this.getUserCardLocator(frame, userName).first();
+        await userCard.waitFor({ state: 'visible', timeout: 20000 });
+        await userCard.scrollIntoViewIfNeeded();
+        await expect(userCard).toBeVisible({ timeout: 5000 });
+    }
+
+    /**
+     * Click a quick filter tab (All, Unread, Groups, Customers)
+     * @param {'All' | 'Unread' | 'Groups' | 'Customers'} filterName
+     */
+    async selectChatFilter(filterName) {
+        const frame = this.getChatFrame();
+        const filterBtn = frame
+            .locator(this.chatFilterBar)
+            .getByRole('button', { name: filterName, exact: true });
+        await filterBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await filterBtn.click();
+        await this.page.waitForTimeout(500);
+    }
+
+    /**
+     * Click a user card in the chat list to open their conversation
+     * @param {string} userName - Display name shown on the user card (e.g. "Aamir Mir (M)")
+     */
+    async clickUserCard(userName) {
+        const frame = this.getChatFrame();
+        await this.dismissProfilePanelIfOpen();
+
+        const userCard = this.getUserCardLocator(frame, userName).first();
+
+        await userCard.waitFor({ state: 'visible', timeout: 20000 });
+        await userCard.scrollIntoViewIfNeeded();
+        await expect(userCard).toBeEnabled({ timeout: 5000 });
+
+        await userCard.click({ timeout: 10000 });
+
+        try {
+            await this.waitForConversationView();
+        } catch {
+            await userCard.click({ force: true });
+            await this.waitForConversationView();
+        }
+    }
+
+    /**
+     * Search in the chat bar, then click a user from the filtered results
+     * @param {string} searchQuery - Text to type in the search bar
+     * @param {string} [userName] - Display name to click (defaults to searchQuery for partial match)
+     */
+    async searchAndSelectUser(searchQuery, userName = searchQuery) {
+        await this.waitForChatList();
+        await this.searchChat(searchQuery);
+        await this.waitForSearchResults(userName);
+        await this.clickUserCard(userName);
+    }
+
+    /**
+     * Open a user's chat — searches by default; pass search: false to click from Recent list
+     * @param {string} userName - Display name on the user card to click
+     * @param {{ search?: boolean, searchQuery?: string }} [options]
+     */
+    async selectUser(userName, { search = true, searchQuery = userName } = {}) {
+        if (search) {
+            await this.searchAndSelectUser(searchQuery, userName);
+            return;
+        }
+
+        await this.waitForChatList({ requireRecent: true });
+        await this.clickUserCard(userName);
+    }
+
+    /**
+     * Verify a specific user's conversation is open (message composer visible)
+     * @param {string} userName - Display name of the user whose chat should be open
+     */
+    async verifyUserChatOpen(userName) {
+        await this.waitForConversationView();
+
+        const frame = this.getChatFrame();
+        const exactName = new RegExp(`^${escapeRegExp(userName)}$`, 'i');
+        const nameInHeader = frame
+            .locator('header')
+            .locator(this.chatUserNameText, { hasText: exactName })
+            .first();
+        const headerVisible = await nameInHeader.isVisible({ timeout: 5000 }).catch(() => false);
+
+        if (headerVisible) {
+            await expect(nameInHeader).toBeVisible({ timeout: 15000 });
+            return;
+        }
+
+        await expect(
+            frame.locator(this.chatUserNameText, { hasText: exactName }).first(),
+        ).toBeVisible({ timeout: 15000 });
+    }
+
+    /**
+     * Wait for the conversation view (message thread + composer) after selecting a user
+     */
+    async waitForConversationView() {
+        const frame = this.getChatFrame();
+        await expect(frame.locator(this.chatMessageInput)).toBeVisible({ timeout: 15000 });
+    }
+
+    /**
+     * Type a message in the conversation composer
+     * @param {string} message - The message to type
+     */
+    async typeMessage(message) {
+        const frame = this.getChatFrame();
+        const input = frame.locator(this.chatMessageInput).first();
+        await input.waitFor({ state: 'visible', timeout: 15000 });
+        await input.click();
+        await input.fill(message);
+        await expect(frame.locator(this.chatSendButton).first()).toBeVisible({ timeout: 10000 });
+    }
+
+    /**
+     * Click the send button (appears after typing a message)
      */
     async clickSend() {
-        const sendBtn = this.page.locator(this.chatSendButton).first();
+        const frame = this.getChatFrame();
+        const sendBtn = frame.locator(this.chatSendButton).first();
         await sendBtn.waitFor({ state: 'visible', timeout: 10000 });
         await expect(sendBtn).toBeEnabled({ timeout: 5000 });
         await sendBtn.click();
@@ -150,6 +377,128 @@ class ChatPage {
     async sendMessage(message) {
         await this.typeMessage(message);
         await this.clickSend();
+    }
+
+    /**
+     * Send multiple messages with numbered bodies: "1", "2", "3", ...
+     * @param {number} count - How many messages to send
+     * @param {{ startAt?: number, logEvery?: number }} [options]
+     */
+    async sendBulkMessages(count, { startAt = 1, logEvery = 10 } = {}) {
+        for (let i = 0; i < count; i++) {
+            const messageNumber = startAt + i;
+            const body = String(messageNumber);
+            await this.sendMessage(body);
+
+            if (logEvery > 0 && (i + 1) % logEvery === 0) {
+                console.log(`Sent ${i + 1}/${count} — message body: ${body}`);
+            }
+        }
+
+        console.log(`Bulk send complete: ${count} messages (${startAt} to ${startAt + count - 1})`);
+    }
+
+    /**
+     * Verify a sent message appears in the conversation thread
+     * @param {string} message - Message text to verify
+     */
+    async verifyMessageSent(message) {
+        const frame = this.getChatFrame();
+        const messageBubble = frame.locator(this.chatMessageBubble).filter({
+            has: frame.locator('.whitespace-pre-wrap', { hasText: message }),
+        }).last();
+        await expect(messageBubble).toBeVisible({ timeout: 15000 });
+    }
+
+    /**
+     * Click on the "Groups" tab button in the chat panel
+     */
+    async clickGroupsTab() {
+        const frame = this.getChatFrame();
+        const groupsBtn = frame.locator('button:has-text("Groups")').first();
+        await groupsBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(groupsBtn).toBeEnabled({ timeout: 5000 });
+        await groupsBtn.click();
+        await this.page.waitForTimeout(500);
+    }
+
+    /**
+     * Click the plus icon button to create a new group
+     */
+    async clickPlusIcon() {
+        const frame = this.getChatFrame();
+        const plusIcon = frame.locator(this.plusIcon).first();
+        await plusIcon.waitFor({ state: 'visible', timeout: 10000 });
+        await plusIcon.click();
+        await this.page.waitForTimeout(500);
+    }
+
+    /**
+     * Enter group name inside the create group modal
+     * @param {string} groupName - The name for the group
+     */
+    async enterGroupName(groupName) {
+        const frame = this.getChatFrame();
+        const groupNameInput = frame.locator(this.groupNameInput).first();
+        await groupNameInput.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(groupNameInput).toBeEnabled({ timeout: 5000 });
+        await groupNameInput.fill(groupName);
+        await this.page.waitForTimeout(300);
+    }
+
+    /**
+     * Search and select a member inside the group creation modal
+     * @param {string} userName - Name of the user to select
+     */
+    async searchAndSelectGroupMember(userName) {
+        const frame = this.getChatFrame();
+        const searchInput = frame.locator(this.groupMemberSearchInput).first();
+        await searchInput.waitFor({ state: 'visible', timeout: 10000 });
+        await searchInput.fill(userName);
+        await this.page.waitForTimeout(1000);
+
+        const memberRow = frame.locator('button').filter({ hasText: userName }).first();
+        await memberRow.waitFor({ state: 'visible', timeout: 5000 });
+        await memberRow.click();
+        await this.page.waitForTimeout(300);
+
+        await searchInput.clear();
+        await this.page.waitForTimeout(300);
+    }
+
+    /**
+     * Select members from the scrollable list in the create group modal
+     * @param {number} count - How many members to select
+     */
+    async selectGroupMembersFromList(count) {
+        const frame = this.getChatFrame();
+        const memberButtons = frame.locator(this.groupMemberList);
+        const total = await memberButtons.count();
+        const limit = Math.min(count, total);
+
+        for (let i = 0; i < limit; i++) {
+            const btn = memberButtons.nth(i);
+            await btn.scrollIntoViewIfNeeded();
+            await btn.click();
+            await this.page.waitForTimeout(100);
+        }
+    }
+
+    /**
+     * Click the Create Group button to submit the form
+     */
+    async clickCreateGroupButton() {
+        const frame = this.getChatFrame();
+        const modal = frame.locator(this.createGroupModal).first();
+        await modal.waitFor({ state: 'visible', timeout: 15000 });
+
+        const createBtn = modal.locator(this.createGroupButton).first();
+        await createBtn.scrollIntoViewIfNeeded();
+        await createBtn.waitFor({ state: 'visible', timeout: 10000 });
+        await expect(createBtn).toBeEnabled({ timeout: 5000 });
+        await createBtn.click();
+        await modal.waitFor({ state: 'detached', timeout: 15000 });
+        await this.page.waitForTimeout(500);
     }
 
     /**
