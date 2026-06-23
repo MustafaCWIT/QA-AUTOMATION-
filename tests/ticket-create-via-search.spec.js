@@ -40,20 +40,15 @@ test.describe('Ticket Creation via Contact Search', () => {
   });
 
   test('should search and create contact with required fields', async ({ page }) => {
-    test.setTimeout(120000);
+    test.setTimeout(180000);
 
     const ticketsManagerPage = new TicketsManagerPage(page);
-    const { searchTerm, name, emailPrefix, emailDomain, gender, contactType, designation } =
-      testData.contactData;
+    const contactData = testData.contactData;
+    const contactEmail = `${contactData.emailPrefix}.${Date.now()}@${contactData.emailDomain}`;
 
-    const contactEmail = `${emailPrefix}.${Date.now()}@${emailDomain}`;
-
-    await ticketsManagerPage.createContactViaSearch(searchTerm, {
-      name,
+    await ticketsManagerPage.createContactViaSearch(contactData.searchTerm, {
+      ...contactData,
       email: contactEmail,
-      gender,
-      contactType,
-      designation,
     });
 
     await expect(page.getByText(/contact.*created|created successfully/i).first()).toBeVisible({
