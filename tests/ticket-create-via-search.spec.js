@@ -39,6 +39,28 @@ test.describe('Ticket Creation via Contact Search', () => {
     await expect(modal.locator('input[placeholder="Enter Name *"]')).toBeVisible({ timeout: 10000 });
   });
 
+  test('should search and create contact with required fields', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const ticketsManagerPage = new TicketsManagerPage(page);
+    const { searchTerm, name, emailPrefix, emailDomain, gender, contactType, designation } =
+      testData.contactData;
+
+    const contactEmail = `${emailPrefix}.${Date.now()}@${emailDomain}`;
+
+    await ticketsManagerPage.createContactViaSearch(searchTerm, {
+      name,
+      email: contactEmail,
+      gender,
+      contactType,
+      designation,
+    });
+
+    await expect(page.getByText(/contact.*created|created successfully/i).first()).toBeVisible({
+      timeout: 30000,
+    });
+  });
+
   test('should open ticket create form after contact search via Search tab', async ({ page }) => {
     test.setTimeout(60000);
 
