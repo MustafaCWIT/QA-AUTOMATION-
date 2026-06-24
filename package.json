@@ -10,6 +10,7 @@
     "test:ui": "playwright test --ui",
     "test:login": "playwright test tests/login.spec.js",
     "test:ticket-replies": "playwright test -g \"should navigate to ticket replies and click the first ticket\"",
+    "test:ticket-create-search": "playwright test tests/ticket-create-via-search.spec.js",
     "report": "playwright show-report"
   },
   "keywords": [

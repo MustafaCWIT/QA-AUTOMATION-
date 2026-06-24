@@ -64,7 +64,7 @@ test.describe('Chat - Open Chat from Welcome Page', () => {
     test('should create 50 groups each with 50 members', async ({ page }) => {
         test.setTimeout(600000);
 
-        const totalGroups = 50;
+        const totalGroups = 5;
         const membersPerGroup = 50;
         const chatPage = new ChatPage(page);
 

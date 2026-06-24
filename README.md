@@ -29,3 +29,5 @@ $env:CHAT_BULK_COUNT="5"; npx playwright test tests/chat.spec.js -g "bulk number
 npx playwright test tests/chat.spec.js -g "create 50 groups"
 
  npx playwright test -g "should navigate to ticket replies and click the first ticket"
+
+  npx playwright test tests/ticket-create-via-search.spec.js -g "should search and create contact"

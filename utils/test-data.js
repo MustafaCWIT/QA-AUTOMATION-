@@ -73,6 +73,28 @@ module.exports = {
     bulkMessageCount: Number(process.env.CHAT_BULK_COUNT) || 200,
   },
 
+  contactData: {
+    searchTerm: 'm',
+    name: 'E2E Test Contact',
+    emailPrefix: 'e2e.contact',
+    emailDomain: 'example.com',
+    gender: 'Male',
+    contactType: 'Customer',
+    designation: 'Business Owner',
+    method: 'SMS',
+    referenceNo: 'REF-E2E-001',
+    phone: '+447712345678',
+    addressType: 'Home',
+    addressName: 'E2E Address Contact',
+    addressEmail: 'e2e.address@example.com',
+    address: '123 Test Street, London, UK',
+    socialPlatform: 'Fb',
+    socialLink: '@e2e_test_contact',
+    documentType: 'Passport',
+    documentValue: 'AB1234567',
+    accountNumber: '521200123456',
+  },
+
   timeouts: {
     short: 2000,
     medium: 5000,
@@ -86,6 +108,23 @@ module.exports = {
     'khurram.naveed@maxenpower.com',
     'rida.mahmood@maxenpower.com',
     'sadia.amjad@maxenpower.com',
+    'hamza.sohail@maxenpower.com',
+    'wajiha.javed@maxenpower.com',
+    'asad.sultan@maxenpower.com',
+    'fiaz.mumtaz@maxenpower.com',
+    'shahroz.ali@maxenpower.com',
+    'abdullah.abbas@maxenpower.com',
+    'maria.riaz@maxenpower.com',
+    'saqib.ali@maxenpower.com',
+    'fareeha.rafaqat@maxenpower.com',
+    'haseeb.paracha@maxenpower.com',
+    'emaan.ali@maxenpower.com',
+    'waseem.akhtar@maxenpower.com',
+    'humair.lawrence@maxenpower.com',
+    'umar.shaukat@maxenpower.com',
+    'amina.mahnoor@maxenpower.com',
+    'rashid.ali@maxenpower.com',
+    'users123@gmail.com'
   ],
 
   // Dolphin AI questions to ask for each ticket (per agent)
@@ -130,6 +169,8 @@ module.exports = {
     'Provide task details.',
     'Provide complete analysis.',
     'Provide complete ticket intelligence including summary, complaint, assignees, project, tasks, risks, sentiment, blockers and recommended reply.',
+    'Does this ticket contains any attachments?',
+    'who send the last reply to this ticket?'
   ],
 };
 
